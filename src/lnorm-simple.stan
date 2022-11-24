@@ -100,7 +100,6 @@ transformed parameters {
       sigma_random * sigma_beta[k] * zbeta[species, k]) .* X[, k];
   }
 
-
   // calculate linear predictor
   mu = alpha_main + alpha[species] +
     beta_term +

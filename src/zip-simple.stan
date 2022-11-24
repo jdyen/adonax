@@ -70,10 +70,6 @@ parameters {
   matrix[Q, K] zbeta;
   vector[Q] ztheta;
 
-  // residual term
-  matrix[Q, N] eps;
-  vector<lower=0>[Q] zsigma;
-  
   // random effects
   matrix[Q, nbasin] gamma_basin;
   matrix[Q, nblock] gamma_block;
@@ -95,7 +91,6 @@ transformed parameters {
   vector[Q] alpha;
   matrix[Q, K] beta;  
   vector[Q] theta;
-  vector<lower=0>[Q] sigma;
   matrix[Q, N] mu;
   vector[nflat] mu_flat;
   matrix[Q, N] theta_zero_mat;
@@ -109,7 +104,6 @@ transformed parameters {
   alpha = sigma_fixed * zalpha;
   beta = sigma_fixed * zbeta;
   theta = sigma_fixed * ztheta;
-  sigma = sigma_resid * zsigma;
 
   // calculate linear predictor
   mu = rep_matrix(alpha, N) +
@@ -120,8 +114,7 @@ transformed parameters {
      rep_matrix(sigma_block, N) .* gamma_block[, block_id] +
      rep_matrix(sigma_site, N) .* gamma_site[, site]
     ) +
-    log_scale_factor +
-    rep_matrix(sigma, N) .* eps;
+    log_scale_factor;
 
   // pull out zero-inflation param for each obs
   theta_zero_mat = theta_zero[, basin];
@@ -152,10 +145,6 @@ model {
   sigma_basin ~ std_normal();
   sigma_block ~ std_normal();
   sigma_site ~ std_normal();
-
-  // priors for covariance matrix
-  zsigma ~ std_normal();
-  to_vector(eps) ~ std_normal();
 
   // define zero inflation parameter from river-level mean
   theta_zero_lambda ~ pareto(0.1, 1.5);
