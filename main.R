@@ -592,7 +592,6 @@ ggsave(
   units = "in", 
   dpi = 600
 )
-
 # extract effects from model 2: how does A. donax affect species richness?
 origin_list <- c("Exotic", "Native", "Translocated")
 model2_effects <- draws_model2 %>% 
@@ -655,7 +654,7 @@ model3_effects <- draws_model3 %>%
     sigma_beta[predictor],
     zbeta_main[predictor],
     zbeta[species, predictor]
-    ) %>% 
+  ) %>% 
   median_qi(
     theta = theta_main + theta,
     beta = model3_data$sigma_fixed * zbeta_main +
@@ -675,10 +674,10 @@ model3_theta <- model3_effects %>%
   xlab("Parameter estimate")
 model3_beta <- model3_effects %>%
   select(contains("beta"), Species, Predictor, .width, .point, .interval) %>%
-  ggplot(aes(y = Predictor, x = beta, xmin = beta.lower, xmax = beta.upper), position = position_dodge(0.4)) +
+  ggplot(aes(y = Species, x = beta, xmin = beta.lower, xmax = beta.upper), position = position_dodge(0.4)) +
   geom_pointinterval(position = position_dodge(0.4)) +
   geom_vline(xintercept = 0, linetype = "dashed") +
-  facet_wrap( ~ Species, ncol = 3) +
+  facet_wrap( ~ Predictor, ncol = 3) +
   xlab("Parameter estimate")
 
 # save plots to file
@@ -784,14 +783,16 @@ fitted_values <- data.frame(
 fitted_plot <- fitted_values %>%
   mutate(
     model = gsub("draws_", "", model),
-    model = gsub("model", "Model ", model)
+    model = gsub("model", "Model ", model),
+    upper = ifelse(upper > 10 * fitted, 10 * fitted, upper)
   ) %>%
   ggplot() +
   geom_point(aes(y = fitted, x = observed)) +
   geom_errorbar(aes(ymin = lower, ymax = upper, x = observed)) +
   facet_wrap( ~ model, scales = "free") +
   xlab("Observed value (Models 1-3) or false positive rate (Model 0a and 0b)") +
-  ylab("Fitted value (Models 1-3) or true positive rate (Model 0a and 0b)")
+  ylab("Fitted value (Models 1-3) or true positive rate (Model 0a and 0b)") +
+  theme(axis.title = element_text(size = 8))
 
 # save to file
 ggsave(
