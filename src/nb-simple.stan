@@ -133,3 +133,15 @@ model {
   yflat ~ neg_binomial_2_log(mu_flat, phi_flat);
 
 }
+
+generated quantities {
+  int<lower=0> ypred[nflat];
+  
+  // random draws from the posterior of mu and phi for posterior checks
+  for (i in 1:nflat) {
+    real mu_pred = mu_flat[i]; 
+    if (mu_pred > 15.) mu_pred = 15.;
+    ypred[i] = neg_binomial_2_log_rng(mu_pred, phi_flat[i]);
+  }
+  
+}

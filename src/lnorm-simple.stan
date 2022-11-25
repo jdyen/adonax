@@ -35,14 +35,6 @@ data {
   
 }
 
-transformed data {
-  vector[N] yp1;
-  
-  // add 1 to y
-  yp1 = y + 1;
-  
-}
-
 parameters {
   
   // linear predictor
@@ -148,7 +140,17 @@ model {
   // and observation variance
   sigma_main ~ std_normal();
 
-  // calculate likelihood of response (zero-inflataed Poisson)
-  target += lognormal_lpdf(yp1 | mu, sigma_main);
+  // calculate likelihood of response (lognormal)
+  target += lognormal_lpdf(y | mu, sigma_main);
    
+}
+
+generated quantities {
+  vector<lower=0>[N] ypred;
+  
+  // random draws from the posterior of mu and phi for posterior checks
+  for (i in 1:N) {
+    ypred[i] = lognormal_rng(mu[i], sigma_main);
+  }
+  
 }

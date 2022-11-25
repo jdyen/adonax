@@ -16,7 +16,7 @@ library(tidybayes)
 library(ROCR)
 
 # set a flag to re-run models
-refit_models <- FALSE
+refit_models <- TRUE
 
 # load some helper functions
 source("R/data-helpers.R")
@@ -25,6 +25,13 @@ source("R/data-helpers.R")
 spp_info <- read_xlsx(
   "data/BD_Fish_Arundo.xlsx", sheet = "Metadata and other info",
   range = "A1:U30"
+)
+
+# load fish guild info
+guilds <- read_xlsx(
+  "data/FISH GUILDS.xlsx",
+  skip = 1,
+  col_names = c("species", "habitat", "diet", "breeding", "migration", "habitat_use")
 )
 
 # remove second (incorrect) ebro basin classifications
@@ -68,7 +75,7 @@ model0_predictors <- cpue %>%
     pH, ammonia_no2, nitrate_phosphate,
     Channel_conservation, Habitat_diversity
   )
-model0a_data <- list(
+model0_data <- list(
   N = nrow(cpue),
   K = ncol(model0_predictors),
   y = cpue %>% pull(Arundo),
@@ -77,26 +84,7 @@ model0a_data <- list(
   sigma_fixed = 5.,
   sigma_random = 2.
 )
-model0a_data$nbasin <- max(model0a_data$basin)
-
-# create same again but with fish as predictors
-model0_fish <- cpue %>%
-  select(
-    ACAR, ALAL, AMME, ANAN, BAQU, BAGR, BAHA,
-    BAME, CAAU, COCA, COPA, CYCA, ESLU, GAHO, GOLO,
-    LEGI, MISA, ONMY, PAMY, PHBI, PSPA, RURU, SAFL,
-    SATR, SALU, SCER, SIGL, SQLA, GAGY
-  ) 
-model0b_data <- list(
-  N = nrow(cpue),
-  K = ncol(model0_fish),
-  y = cpue %>% pull(Arundo),
-  X = scale(model0_fish),
-  basin = cpue %>% pull(Basin) %>% rebase_factor(),
-  sigma_fixed = 5.,
-  sigma_random = 2.
-)
-model0b_data$nbasin <- max(model0b_data$basin)
+model0_data$nbasin <- max(model0_data$basin)
 
 # filter data to paired sites
 paired_fish <- paired_sites %>%
@@ -114,6 +102,37 @@ paired_cpue <- paired_fish %>%
 # drop species that are never observed
 paired_cpue <- paired_cpue %>% select(which(colSums(paired_cpue) > 0))
 
+# attach guild info to species-level CPUE measurements
+cpue_guild <- paired_cpue %>%
+  pivot_longer(cols = everything(), names_to = "species") %>%
+  mutate(id = rep(seq_len(nrow(paired_cpue)), each = ncol(paired_cpue))) %>%
+  left_join(guilds, by = "species") %>%
+  filter(!is.na(migration))
+
+# diet guild
+cpue_diet <- cpue_guild %>%
+  group_by(id, diet) %>%
+  summarise(cpue = sum(value)) %>%
+  pivot_wider(id_cols = id, values_from = cpue, names_from = diet) %>%
+  ungroup() %>%
+  select(-id)
+
+# migration guild
+cpue_migration <- cpue_guild %>%
+  group_by(id, migration) %>%
+  summarise(cpue = sum(value)) %>%
+  pivot_wider(id_cols = id, values_from = cpue, names_from = migration) %>%
+  ungroup() %>%
+  select(-id)
+
+# habitat use guild
+cpue_habitat_use <- cpue_guild %>%
+  group_by(id, habitat_use) %>%
+  summarise(cpue = sum(value)) %>%
+  pivot_wider(id_cols = id, values_from = cpue, names_from = habitat_use) %>%
+  ungroup() %>%
+  select(-id)
+
 # and predictor variables
 paired_predictors <- paired_fish %>%
   select(
@@ -123,39 +142,13 @@ paired_predictors <- paired_fish %>%
     Habitat_diversity
   )
 
-# and grab species info
-paired_origin <- spp_info %>% 
-  pivot_longer(
-    cols = c(
-      Besos, Daro, Ebro, Fluvia, Francoli, Foix, Gaia,
-      Garona, Llobregat, Muga, Riudecanyes, Ridaura,
-      Senia, Ter, Tordera
-    ),
-    names_to = "Basin",
-    values_to = "Origin"
-  ) %>% 
-  mutate(Origin = rebase_factor(Origin)) %>%
-  select(SPECIES, Basin, Origin) %>%
-  pivot_wider(
-    id_cols = Basin,
-    values_from = Origin,
-    names_from = SPECIES
-  ) %>%
-  right_join(paired_fish %>% select(Basin), by = "Basin") %>%
-  select(-Basin) %>%
-  select(all_of(colnames(paired_cpue)))
-
-# dump this all together in a list
-model1_data <- list(
+# dump this all together in a list for all species and for each guild
+model1a_data <- list(
   N = nrow(paired_cpue),
   Q = ncol(paired_cpue),
   K = ncol(paired_predictors),
-  nflat = length(unlist(paired_cpue)),
   X = t(scale(paired_predictors)),
   arundo = paired_fish %>% pull(Arundo),
-  ftle = c(scale(spp_info$`TROPHIC LEVEL`[match(colnames(paired_cpue), spp_info$SPECIES)])),
-  norigin = max(paired_origin),
-  origin = paired_origin,
   basin = paired_fish %>% pull(Basin) %>% rebase_factor(),
   block_id = paired_fish %>% pull(BLOCK) %>% rebase_factor(),
   site = paired_fish %>% pull(CODE1) %>% rebase_factor(),
@@ -167,17 +160,31 @@ model1_data <- list(
 )
 
 # add random effect counts
-model1_data$nbasin <- max(model1_data$basin)
-model1_data$nblock <- max(model1_data$block_id)
-model1_data$nsite <- max(model1_data$site)
+model1a_data$nbasin <- max(model1a_data$basin)
+model1a_data$nblock <- max(model1a_data$block_id)
+model1a_data$nsite <- max(model1a_data$site)
 
 # and add response variable and zero identifiers
-model1_data$yflat <- round(c(t(paired_cpue)) * model1_data$scale_factor)
-model1_data$nflat <- length(model1_data$yflat)
-model1_data$zero_idx <- which(model1_data$yflat == 0)
-model1_data$nzero <- length(model1_data$zero_idx)
-model1_data$nonzero_idx <- which(model1_data$yflat > 0)
-model1_data$notzero <- length(model1_data$nonzero_idx)
+model1a_data$yflat <- round(c(t(paired_cpue)) * model1a_data$scale_factor)
+model1a_data$nflat <- length(model1a_data$yflat)
+
+# create similar data sets for the diet guild
+model1b_data <- model1a_data
+model1b_data$Q <- ncol(cpue_diet)
+model1b_data$yflat <- round(c(t(cpue_diet)) * model1b_data$scale_factor)
+model1b_data$nflat <- length(model1b_data$yflat)
+
+# create similar data sets for the migration guild
+model1c_data <- model1a_data
+model1c_data$Q <- ncol(cpue_migration)
+model1c_data$yflat <- round(c(t(cpue_migration)) * model1c_data$scale_factor)
+model1c_data$nflat <- length(model1c_data$yflat)
+
+# create similar data sets for the habitat use guild
+model1d_data <- model1a_data
+model1d_data$Q <- ncol(cpue_habitat_use)
+model1d_data$yflat <- round(c(t(cpue_habitat_use)) * model1d_data$scale_factor)
+model1d_data$nflat <- length(model1d_data$yflat)
 
 # grab summary stats for model 2
 paired_richness <- paired_fish %>%
@@ -195,10 +202,8 @@ model2_data <- list(
   N = nrow(paired_richness),
   Q = ncol(paired_richness),
   K = ncol(paired_predictors),
-  nflat = length(unlist(paired_richness)),
   X = t(scale(paired_predictors)),
   arundo = paired_fish %>% pull(Arundo),
-  wtl = c(scale(wtl)),
   basin = paired_fish %>% pull(Basin) %>% rebase_factor(),
   block_id = paired_fish %>% pull(BLOCK) %>% rebase_factor(),
   site = paired_fish %>% pull(CODE1) %>% rebase_factor(),
@@ -217,10 +222,6 @@ model2_data$nsite <- max(model2_data$site)
 # and add response variable and zero identifiers
 model2_data$yflat <- c(t(paired_richness))
 model2_data$nflat <- length(model2_data$yflat)
-model2_data$zero_idx <- which(model2_data$yflat == 0)
-model2_data$nzero <- length(model2_data$zero_idx)
-model2_data$nonzero_idx <- which(model2_data$yflat > 0)
-model2_data$notzero <- length(model2_data$nonzero_idx)
 
 # and moving onto data for model 3 (individual sizes)
 smi_spp_info <- spp_info %>% 
@@ -267,8 +268,6 @@ model3_data <- list(
   y = smi_full %>% pull(SMI),
   X = scale(smi_predictors),
   arundo = smi_full %>% pull(Arundo),
-  ftle = c(scale(smi_full %>% pull(trophic_level))),
-  origin = smi_full %>% pull(Origin) %>% rebase_factor(),
   basin = smi_full %>% pull(Basin) %>% rebase_factor(),
   site = smi_full %>% pull(CODE1) %>% rebase_factor(),
   block_id = smi_full %>% pull(BLOCK) %>% rebase_factor(),
@@ -281,7 +280,6 @@ model3_data <- list(
 )
 
 # add counts for all random effects
-model3_data$norigin <- max(model3_data$origin)
 model3_data$nbasin <- max(model3_data$basin)
 model3_data$nsite <- max(model3_data$site)
 model3_data$nblock <- max(model3_data$block_id)
@@ -301,14 +299,14 @@ cores <- 4
 # fit all models if required
 if (refit_models) {
   
-  # Fit model 0.a: Bayesian logistic regression, where does A. donax occur?
+  # Fit model 0: Bayesian logistic regression, where does A. donax occur?
   # compile model
   model0_stan <- stan_model("src/bern.stan")
   
   # sample from model
-  draws_model0a <- sampling(
+  draws_model0 <- sampling(
     model0_stan,
-    data = model0a_data,
+    data = model0_data,
     iter = iter,
     warmup = warmup,
     chains = chains,
@@ -319,39 +317,19 @@ if (refit_models) {
   )
   
   # save fitted model
-  qsave(draws_model0a, file = paste0("outputs/fitted/draws-model0a-", Sys.Date(), ".qs"))
+  qsave(draws_model0, file = paste0("outputs/fitted/draws-model0-", Sys.Date(), ".qs"))
   
   # free up some space
-  rm(draws_model0a)
-  
-  # Fit model 0.b: Bayesian logistic regression, which fish assemblages are associated with A. donax?
-  # sample from model
-  draws_model0b <- sampling(
-    model0_stan,
-    data = model0b_data,
-    iter = iter,
-    warmup = warmup,
-    chains = chains,
-    thin = thin,
-    cores = cores,
-    control = list(adapt_delta = 0.9, max_treedepth = 18),
-    seed = seed
-  )
-  
-  # save fitted model
-  qsave(draws_model0b, file = paste0("outputs/fitted/draws-model0b-", Sys.Date(), ".qs"))
-  
-  # free up some space
-  rm(draws_model0b)
-  
-  # Fit model 1: model of fish CPUE, how does A. donax affect fish species?
+  rm(draws_model0)
+
+  # Fit model 1a: model of fish CPUE, how does A. donax affect fish species?
   # compile model
-  model1_stan <- stan_model("src/zip-simple.stan")
+  model1_stan <- stan_model("src/nb-simple.stan")
   
   # sample from model
-  draws_model1 <- sampling(
+  draws_model1a <- sampling(
     model1_stan,
-    data = model1_data,
+    data = model1a_data,
     iter = iter,
     warmup = warmup,
     chains = chains,
@@ -362,12 +340,69 @@ if (refit_models) {
   )
   
   # save fitted model
-  qsave(draws_model1, file = paste0("outputs/fitted/draws-model1-", Sys.Date(), ".qs"))
+  qsave(draws_model1a, file = paste0("outputs/fitted/draws-model1a-", Sys.Date(), ".qs"))
   
   # free up some space
-  rm(draws_model1)
+  rm(draws_model1a)
 
-  # sample from model
+  # sample from model for diet guilds
+  draws_model1b <- sampling(
+    model1_stan,
+    data = model1b_data,
+    iter = iter,
+    warmup = warmup,
+    chains = chains,
+    thin = thin,
+    cores = cores,
+    control = list(adapt_delta = 0.95, max_treedepth = 20),
+    seed = seed
+  )
+  
+  # save fitted model
+  qsave(draws_model1b, file = paste0("outputs/fitted/draws-model1b-", Sys.Date(), ".qs"))
+  
+  # free up some space
+  rm(draws_model1b)
+  
+  # sample from model for migration guilds
+  draws_model1c <- sampling(
+    model1_stan,
+    data = model1c_data,
+    iter = iter,
+    warmup = warmup,
+    chains = chains,
+    thin = thin,
+    cores = cores,
+    control = list(adapt_delta = 0.95, max_treedepth = 20),
+    seed = seed
+  )
+  
+  # save fitted model
+  qsave(draws_model1c, file = paste0("outputs/fitted/draws-model1c-", Sys.Date(), ".qs"))
+  
+  # free up some space
+  rm(draws_model1c)
+  
+  # sample from model for habitat use guilds
+  draws_model1d <- sampling(
+    model1_stan,
+    data = model1d_data,
+    iter = iter,
+    warmup = warmup,
+    chains = chains,
+    thin = thin,
+    cores = cores,
+    control = list(adapt_delta = 0.95, max_treedepth = 20),
+    seed = seed
+  )
+  
+  # save fitted model
+  qsave(draws_model1d, file = paste0("outputs/fitted/draws-model1d-", Sys.Date(), ".qs"))
+  
+  # free up some space
+  rm(draws_model1d)
+  
+  # sample from model for species richness by classification (native or otherwise)
   draws_model2 <- sampling(
     model1_stan,
     data = model2_data,
@@ -412,9 +447,11 @@ if (refit_models) {
   
   # list all file names
   file_names <- c(
-    "draws-model0a",
-    "draws-model0b",
-    "draws-model1",
+    "draws-model0",
+    "draws-model1a",
+    "draws-model1b",
+    "draws-model1c",
+    "draws-model1d",
     "draws-model2",
     "draws-model3"
   )
@@ -433,9 +470,11 @@ if (refit_models) {
 
 # plot diagnostics
 model_names <- c(
-  "draws_model0a",
-  "draws_model0b",
-  "draws_model1",
+  "draws_model0",
+  "draws_model1a",
+  "draws_model1b",
+  "draws_model1c",
+  "draws_model1d",
   "draws_model2", 
   "draws_model3"
 )
@@ -492,7 +531,7 @@ predictor_names <- c(
 )
 
 # extract parameters from model 0.a: Bayesian logistic regression, where does A. donax occur?
-model0a_effects <- draws_model0a %>% 
+model0_effects <- draws_model0 %>% 
   spread_draws(
     beta[Predictor],
   ) %>% 
@@ -500,17 +539,17 @@ model0a_effects <- draws_model0a %>%
     .width = c(0.95, 0.66)
   ) %>%
   mutate(
-    Predictor = colnames(model0a_data$X)[Predictor],
+    Predictor = colnames(model0_data$X)[Predictor],
     Predictor = predictor_names[Predictor]
   )
-model0a_beta <- model0a_effects %>%
+model0_beta <- model0_effects %>%
   ggplot(aes(y = Predictor, x = beta, xmin = .lower, xmax = .upper)) +
   geom_pointinterval() +
   geom_vline(xintercept = 0, linetype = "dashed") +
   xlab("Parameter estimate")
 ggsave(
-  model0a_beta,
-  filename = "outputs/figures/model0a_beta.png",
+  model0_beta,
+  filename = "outputs/figures/model0_beta.png",
   device = png,
   width = 5,
   height = 5,
@@ -518,30 +557,9 @@ ggsave(
   dpi = 600
 )
 
-# extract parameters from model 0.b: Bayesian logistic regression,
-#     which fish assemblages are associated with A. donax?
-model0b_effects <- draws_model0b %>% 
-  spread_draws(beta[Species]) %>% 
-  median_qi(.width = c(0.95, 0.66)) %>%
-  mutate(Species = colnames(model0b_data$X)[Species])
-model0b_beta <- model0b_effects %>%
-  ggplot(aes(y = Species, x = beta, xmin = .lower, xmax = .upper)) +
-  geom_pointinterval() +
-  geom_vline(xintercept = 0, linetype = "dashed") +
-  xlab("Parameter estimate")
-ggsave(
-  model0b_beta,
-  filename = "outputs/figures/model0b_beta.png",
-  device = png,
-  width = 5,
-  height = 8,
-  units = "in", 
-  dpi = 600
-)
-
-# extract and plot parameters from model 1: model of fish CPUE, how does
+# extract and plot parameters from model 1a: model of fish CPUE, how does
 #    A. donax affect fish species?
-model1_effects <- draws_model1 %>% 
+model1a_effects <- draws_model1a %>% 
   spread_draws(
     theta[species],
     beta[species, predictor]
@@ -552,10 +570,10 @@ model1_effects <- draws_model1 %>%
   ) %>%
   mutate(
     Species = colnames(paired_cpue)[species],
-    predictor = rownames(model1_data$X)[predictor],
+    predictor = rownames(model1a_data$X)[predictor],
     Predictor = predictor_names[predictor]
   )
-model1_theta <- model1_effects %>%
+model1a_theta <- model1a_effects %>%
   select(contains("theta"), Species, .width, .point, .interval) %>%
   ggplot(aes(y = Species, x = theta, xmin = theta.lower, xmax = theta.upper)) +
   geom_pointinterval() +
@@ -563,7 +581,7 @@ model1_theta <- model1_effects %>%
   scale_color_brewer(type = "qual", palette = "Set2") +
   theme(legend.position = "none") +
   xlab("Parameter estimate")
-model1_beta <- model1_effects %>%
+model1a_beta <- model1a_effects %>%
   select(contains("beta"), Species, Predictor, .width, .point, .interval) %>%
   ggplot(aes(y = Predictor, x = beta, xmin = beta.lower, xmax = beta.upper), position = position_dodge(0.4)) +
   geom_pointinterval(position = position_dodge(0.4)) +
@@ -575,8 +593,8 @@ model1_beta <- model1_effects %>%
 
 # save plots to file
 ggsave(
-  model1_theta,
-  filename = "outputs/figures/model1_theta.png",
+  model1a_theta,
+  filename = "outputs/figures/model1a_theta.png",
   device = png,
   width = 5,
   height = 7,
@@ -584,14 +602,177 @@ ggsave(
   dpi = 600
 )
 ggsave(
-  model1_beta,
-  filename = "outputs/figures/model1_beta.png",
+  model1a_beta,
+  filename = "outputs/figures/model1a_beta.png",
   device = png,
   width = 10,
   height = 12,
   units = "in", 
   dpi = 600
 )
+
+# extract and plot parameters from model 1b: model of CPUE of fish diet guilds, how does
+#    A. donax affect fish species?
+model1b_effects <- draws_model1b %>% 
+  spread_draws(
+    theta[species],
+    beta[species, predictor]
+  ) %>% 
+  median_qi(
+    theta, beta,
+    .width = c(0.95, 0.66)
+  ) %>%
+  mutate(
+    Species = colnames(paired_cpue)[species],
+    predictor = rownames(model1b_data$X)[predictor],
+    Predictor = predictor_names[predictor]
+  )
+model1b_theta <- model1b_effects %>%
+  select(contains("theta"), Species, .width, .point, .interval) %>%
+  ggplot(aes(y = Species, x = theta, xmin = theta.lower, xmax = theta.upper)) +
+  geom_pointinterval() +
+  geom_vline(xintercept = 0, linetype = "dashed") +
+  scale_color_brewer(type = "qual", palette = "Set2") +
+  theme(legend.position = "none") +
+  xlab("Parameter estimate")
+model1b_beta <- model1b_effects %>%
+  select(contains("beta"), Species, Predictor, .width, .point, .interval) %>%
+  ggplot(aes(y = Predictor, x = beta, xmin = beta.lower, xmax = beta.upper), position = position_dodge(0.4)) +
+  geom_pointinterval(position = position_dodge(0.4)) +
+  geom_vline(xintercept = 0, linetype = "dashed") +
+  facet_wrap( ~ Species, ncol = 4, scales = "free_x") +
+  scale_color_brewer(type = "qual", palette = "Set2", labels = c("A. donax absent", "A. donax present")) +
+  xlab("Parameter estimate") +
+  theme(legend.position = "bottom")
+
+# save plots to file
+ggsave(
+  model1b_theta,
+  filename = "outputs/figures/model1b_theta.png",
+  device = png,
+  width = 5,
+  height = 7,
+  units = "in", 
+  dpi = 600
+)
+ggsave(
+  model1b_beta,
+  filename = "outputs/figures/model1b_beta.png",
+  device = png,
+  width = 10,
+  height = 12,
+  units = "in", 
+  dpi = 600
+)
+
+# extract and plot parameters from model 1c: model of CPUE of fish migration guilds, how does
+#    A. donax affect fish species?
+model1c_effects <- draws_model1c %>% 
+  spread_draws(
+    theta[species],
+    beta[species, predictor]
+  ) %>% 
+  median_qi(
+    theta, beta,
+    .width = c(0.95, 0.66)
+  ) %>%
+  mutate(
+    Species = colnames(paired_cpue)[species],
+    predictor = rownames(model1c_data$X)[predictor],
+    Predictor = predictor_names[predictor]
+  )
+model1c_theta <- model1c_effects %>%
+  select(contains("theta"), Species, .width, .point, .interval) %>%
+  ggplot(aes(y = Species, x = theta, xmin = theta.lower, xmax = theta.upper)) +
+  geom_pointinterval() +
+  geom_vline(xintercept = 0, linetype = "dashed") +
+  scale_color_brewer(type = "qual", palette = "Set2") +
+  theme(legend.position = "none") +
+  xlab("Parameter estimate")
+model1c_beta <- model1c_effects %>%
+  select(contains("beta"), Species, Predictor, .width, .point, .interval) %>%
+  ggplot(aes(y = Predictor, x = beta, xmin = beta.lower, xmax = beta.upper), position = position_dodge(0.4)) +
+  geom_pointinterval(position = position_dodge(0.4)) +
+  geom_vline(xintercept = 0, linetype = "dashed") +
+  facet_wrap( ~ Species, ncol = 4, scales = "free_x") +
+  scale_color_brewer(type = "qual", palette = "Set2", labels = c("A. donax absent", "A. donax present")) +
+  xlab("Parameter estimate") +
+  theme(legend.position = "bottom")
+
+# save plots to file
+ggsave(
+  model1c_theta,
+  filename = "outputs/figures/model1c_theta.png",
+  device = png,
+  width = 5,
+  height = 7,
+  units = "in", 
+  dpi = 600
+)
+ggsave(
+  model1c_beta,
+  filename = "outputs/figures/model1c_beta.png",
+  device = png,
+  width = 10,
+  height = 12,
+  units = "in", 
+  dpi = 600
+)
+
+# extract and plot parameters from model 1d: model of CPUE of fish habitat-use guilds, how does
+#    A. donax affect fish species?
+model1d_effects <- draws_model1d %>% 
+  spread_draws(
+    theta[species],
+    beta[species, predictor]
+  ) %>% 
+  median_qi(
+    theta, beta,
+    .width = c(0.95, 0.66)
+  ) %>%
+  mutate(
+    Species = colnames(paired_cpue)[species],
+    predictor = rownames(model1d_data$X)[predictor],
+    Predictor = predictor_names[predictor]
+  )
+model1d_theta <- model1d_effects %>%
+  select(contains("theta"), Species, .width, .point, .interval) %>%
+  ggplot(aes(y = Species, x = theta, xmin = theta.lower, xmax = theta.upper)) +
+  geom_pointinterval() +
+  geom_vline(xintercept = 0, linetype = "dashed") +
+  scale_color_brewer(type = "qual", palette = "Set2") +
+  theme(legend.position = "none") +
+  xlab("Parameter estimate")
+model1d_beta <- model1d_effects %>%
+  select(contains("beta"), Species, Predictor, .width, .point, .interval) %>%
+  ggplot(aes(y = Predictor, x = beta, xmin = beta.lower, xmax = beta.upper), position = position_dodge(0.4)) +
+  geom_pointinterval(position = position_dodge(0.4)) +
+  geom_vline(xintercept = 0, linetype = "dashed") +
+  facet_wrap( ~ Species, ncol = 4, scales = "free_x") +
+  scale_color_brewer(type = "qual", palette = "Set2", labels = c("A. donax absent", "A. donax present")) +
+  xlab("Parameter estimate") +
+  theme(legend.position = "bottom")
+
+# save plots to file
+ggsave(
+  model1d_theta,
+  filename = "outputs/figures/model1d_theta.png",
+  device = png,
+  width = 5,
+  height = 7,
+  units = "in", 
+  dpi = 600
+)
+ggsave(
+  model1d_beta,
+  filename = "outputs/figures/model1d_beta.png",
+  device = png,
+  width = 10,
+  height = 12,
+  units = "in", 
+  dpi = 600
+)
+
 # extract effects from model 2: how does A. donax affect species richness?
 origin_list <- c("Exotic", "Native", "Translocated")
 model2_effects <- draws_model2 %>% 
@@ -701,7 +882,7 @@ ggsave(
 )
 
 # extract fitted values
-model0a_fitted <- draws_model0a %>% 
+model0_fitted <- draws_model0 %>% 
   gather_draws(mu[obs]) %>% 
   median_qi() %>%
   mutate(
@@ -710,16 +891,16 @@ model0a_fitted <- draws_model0a %>%
     upper = plogis(.upper),
     observed = model0a_data$y
   )
-model0b_fitted <- draws_model0b %>% 
-  gather_draws(mu[obs]) %>% 
-  median_qi() %>%
-  mutate(
-    fitted = plogis(.value),
-    lower = plogis(.lower),
-    upper = plogis(.upper),
-    observed = model0a_data$y
-  )
-model1_fitted <- draws_model1 %>%
+model1a_fitted <- draws_model1a %>%
+  gather_draws(mu[species, obs]) %>%
+  median_qi()
+model1b_fitted <- draws_model1b %>%
+  gather_draws(mu[species, obs]) %>%
+  median_qi()
+model1c_fitted <- draws_model1c %>%
+  gather_draws(mu[species, obs]) %>%
+  median_qi()
+model1d_fitted <- draws_model1d %>%
   gather_draws(mu[species, obs]) %>%
   median_qi()
 model2_fitted <- draws_model2 %>%
@@ -730,50 +911,57 @@ model3_fitted <- draws_model3 %>%
   median_qi()
 
 # calculate fit stats for model 0a and 0b
-model0a_pred <- prediction(model0a_fitted$fitted, model0a_fitted$observed)
-model0a_auc <- performance(model0a_pred, "auc")@y.values[[1]]
-model0a_curve <- performance(model0a_pred, "tpr", "fpr")
-model0b_pred <- prediction(model0b_fitted$fitted, model0b_fitted$observed)
-model0b_auc <- performance(model0b_pred, "auc")@y.values[[1]]
-model0b_curve <- performance(model0b_pred, "tpr", "fpr")
+model0_pred <- prediction(model0_fitted$fitted, model0_fitted$observed)
+model0_auc <- performance(model0_pred, "auc")@y.values[[1]]
+model0_curve <- performance(model0_pred, "tpr", "fpr")
 
 # collate fitted values
 fitted_values <- data.frame(
   model = rep(
     model_names,
     times = c(
-      length(model0a_curve@y.values[[1]]),
-      length(model0b_curve@y.values[[1]]),
-      nrow(model1_fitted),
+      length(model0_curve@y.values[[1]]),
+      nrow(model1a_fitted),
+      nrow(model1b_fitted),
+      nrow(model1c_fitted),
+      nrow(model1d_fitted),
       nrow(model2_fitted),
       nrow(model3_fitted)
     )
   ),
   fitted = c(
-    model0a_curve@y.values[[1]],
-    model0b_curve@y.values[[1]],
-    exp(model1_fitted$.value - log(model1_data$scale_factor)),
+    model0_curve@y.values[[1]],
+    exp(model1a_fitted$.value - log(model1a_data$scale_factor)),
+    exp(model1b_fitted$.value - log(model1b_data$scale_factor)),
+    exp(model1c_fitted$.value - log(model1c_data$scale_factor)),
+    exp(model1d_fitted$.value - log(model1d_data$scale_factor)),
     exp(model2_fitted$.value),
     exp(model3_fitted$.value)
   ),
   lower = c(
-    rep(NA, length(model0a_curve@y.values[[1]])),
-    rep(NA, length(model0b_curve@y.values[[1]])),
-    exp(model1_fitted$.lower - log(model1_data$scale_factor)),
+    rep(NA, length(model0_curve@y.values[[1]])),
+    exp(model1a_fitted$.lower - log(model1a_data$scale_factor)),
+    exp(model1b_fitted$.lower - log(model1b_data$scale_factor)),
+    exp(model1c_fitted$.lower - log(model1c_data$scale_factor)),
+    exp(model1d_fitted$.lower - log(model1d_data$scale_factor)),
     exp(model2_fitted$.lower),
     exp(model3_fitted$.lower)
   ),
   upper = c(
-    rep(NA, length(model0a_curve@y.values[[1]])),
-    rep(NA, length(model0b_curve@y.values[[1]])),
-    exp(model1_fitted$.upper - log(model1_data$scale_factor)),
+    rep(NA, length(model0_curve@y.values[[1]])),
+    exp(model1a_fitted$.upper - log(model1a_data$scale_factor)),
+    exp(model1b_fitted$.upper - log(model1b_data$scale_factor)),
+    exp(model1c_fitted$.upper - log(model1c_data$scale_factor)),
+    exp(model1d_fitted$.upper - log(model1d_data$scale_factor)),
     exp(model2_fitted$.upper),
     exp(model3_fitted$.upper)
   ),
   observed = c(
-    model0a_curve@x.values[[1]],
-    model0b_curve@x.values[[1]],
+    model0_curve@x.values[[1]],
     unlist(paired_cpue),
+    unlist(cpue_diet),
+    unlist(cpue_migration),
+    unlist(cpue_habitat_use),
     unlist(paired_richness),
     model3_data$y
   )
@@ -790,8 +978,8 @@ fitted_plot <- fitted_values %>%
   geom_point(aes(y = fitted, x = observed)) +
   geom_errorbar(aes(ymin = lower, ymax = upper, x = observed)) +
   facet_wrap( ~ model, scales = "free") +
-  xlab("Observed value (Models 1-3) or false positive rate (Model 0a and 0b)") +
-  ylab("Fitted value (Models 1-3) or true positive rate (Model 0a and 0b)") +
+  xlab("Observed value (Models 1-3) or false positive rate (Model 0)") +
+  ylab("Fitted value (Models 1-3) or true positive rate (Model 0)") +
   theme(axis.title = element_text(size = 8))
 
 # save to file
@@ -807,9 +995,11 @@ ggsave(
 
 # grab fit stats
 fit_stats <- c(
-  model0a_auc,
-  model0b_auc,
-  cor(exp(model1_fitted$.value - log(model1_data$scale_factor)), c(unlist(paired_cpue))),
+  model0_auc,
+  cor(exp(model1a_fitted$.value - log(model1a_data$scale_factor)), c(unlist(paired_cpue))),
+  cor(exp(model1b_fitted$.value - log(model1b_data$scale_factor)), c(unlist(cpue_diet))),
+  cor(exp(model1c_fitted$.value - log(model1c_data$scale_factor)), c(unlist(cpue_migration))),
+  cor(exp(model1d_fitted$.value - log(model1d_data$scale_factor)), c(unlist(cpue_habitat_use))),
   cor(exp(model2_fitted$.value), unlist(paired_richness)),
   cor(exp(model3_fitted$.value), model3_data$y)
 )
