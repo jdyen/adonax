@@ -653,7 +653,7 @@ model1c_effects <- draws_model1c %>%
 model1c_theta <- model1c_effects %>%
   select(contains("theta"), Guild, .width, .point, .interval) %>%
   ggplot(aes(y = Guild, x = theta, xmin = theta.lower, xmax = theta.upper)) +
-model1c_effects <- draws_model1c %>% 
+  geom_pointinterval() +
   geom_vline(xintercept = 0, linetype = "dashed") +
   scale_color_brewer(type = "qual", palette = "Set2") +
   theme(legend.position = "none") +
@@ -716,24 +716,24 @@ ggsave(
 
 # combine beta plots and save to file
 model1_beta <- model1b_beta | model1c_beta | model1d_beta
-# ggsave(
-#   model1_beta,
-#   filename = "outputs/figures/model1_beta.png",
-#   device = png,
-#   width = 10,
-#   height = 14,
-#   units = "in", 
-#   dpi = 600
-# )
-# ggsave(
-#   model1a_beta,
-#   filename = "outputs/figures/model1a_beta.png",
-#   device = png,
-#   width = 7,
-#   height = 10,
-#   units = "in", 
-#   dpi = 600
-# )
+ggsave(
+  model1_beta,
+  filename = "outputs/figures/model1_beta.png",
+  device = png,
+  width = 10,
+  height = 14,
+  units = "in",
+  dpi = 600
+)
+ggsave(
+  model1a_beta,
+  filename = "outputs/figures/model1a_beta.png",
+  device = png,
+  width = 7,
+  height = 10,
+  units = "in",
+  dpi = 600
+)
 
 # extract effects from model 2: how does A. donax affect species richness?
 origin_list <- c("Exotic", "Native", "Translocated")

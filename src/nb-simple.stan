@@ -26,8 +26,8 @@ data {
   
   // scale of main effects and overall variance
   real<lower=0> sigma_fixed;
-  real<lower=0> sigma_resid;
   real<lower=0> sigma_random;
+  real<lower=0> sigma_resid;
 
 }
 
@@ -51,7 +51,7 @@ parameters {
   
   // pooling variances for coefficients
   real<lower=0> sigma_alpha;
-  // row_vector<lower=0>[K] sigma_beta;
+  row_vector<lower=0>[K] sigma_beta;
   real<lower=0> sigma_theta;
 
   // random effects
@@ -69,6 +69,10 @@ parameters {
 
   // over-dispersion parameter
   vector<lower=0>[Q] phi;
+  
+  // extra-NB variation 
+  real<lower=0> sigma_eps;
+  matrix[Q, N] eps;
 
 }
 
@@ -88,13 +92,14 @@ transformed parameters {
 
   // calculate linear predictor
   mu = rep_matrix(alpha, N) +
-    // beta * X +
+    beta * X +
     theta * arundo +
     sigma_random *
     (sigma_main_basin * rep_matrix(sigma_basin, N) .* gamma_basin[, basin] +
      sigma_main_block * rep_matrix(sigma_block, N) .* gamma_block[, block_id] +
      sigma_main_site * rep_matrix(sigma_site, N) .* gamma_site[, site]
     ) +
+    sigma_resid * sigma_eps * eps +
     log_scale_factor;
 
   // flatten mu and theta_zero for likelihood calcs
@@ -117,6 +122,7 @@ model {
   sigma_alpha ~ std_normal();
   sigma_beta ~ std_normal();
   sigma_theta ~ std_normal();
+  sigma_eps ~ std_normal();
   
   // priors for random effects
   to_vector(gamma_basin) ~ std_normal();
@@ -127,6 +133,9 @@ model {
   sigma_basin ~ std_normal();
   sigma_block ~ std_normal();
   sigma_site ~ std_normal();
+  
+  // extra-NB variation
+  to_vector(eps) ~ std_normal();
 
   // prior for phi
   real log_half = -0.693147180559945286;  
@@ -143,8 +152,9 @@ generated quantities {
   // random draws from the posterior of mu and phi for posterior checks
   for (i in 1:nflat) {
     real mu_pred = mu_flat[i]; 
-    if (mu_pred > 15.) mu_pred = 15.;
-    ypred[i] = neg_binomial_2_log_rng(mu_pred, phi_flat[i]);
+    real phi_pred = phi_flat[i];
+    if (mu_pred > 10.) mu_pred = 10.;
+    ypred[i] = neg_binomial_2_log_rng(mu_pred, phi_pred);
   }
   
 }
