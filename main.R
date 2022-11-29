@@ -18,9 +18,11 @@ library(ROCR)
 
 # set a flag to re-run models
 refit_models <- TRUE
+refit_model3 <- FALSE
 
 # load some helper functions
 source("R/data-helpers.R")
+source("R/summary-helpers.R")
 
 # load species info
 spp_info <- read_xlsx(
@@ -425,27 +427,32 @@ if (refit_models) {
   # free up some space
   rm(draws_model2)
   
-  # compile model
-  model3_stan <- stan_model("src/lnorm-simple.stan")
-  
-  # sample from model
-  draws_model3 <- sampling(
-    model3_stan,
-    data = model3_data,
-    iter = iter,
-    warmup = warmup,
-    chains = chains,
-    thin = thin,
-    cores = cores,
-    control = list(adapt_delta = 0.95, max_treedepth = 18),
-    seed = seed
-  )
-  
-  # save fitted model
-  qsave(draws_model3, file = paste0("outputs/fitted/draws-model3-", Sys.Date(), ".qs"))
-  
-  # free up some space
-  rm(draws_model3)
+  # only refit model3 if required (very slow and model is stable)
+  if (refit_model3) {
+    
+    # compile model
+    model3_stan <- stan_model("src/lnorm-simple.stan")
+    
+    # sample from model
+    draws_model3 <- sampling(
+      model3_stan,
+      data = model3_data,
+      iter = iter,
+      warmup = warmup,
+      chains = chains,
+      thin = thin,
+      cores = cores,
+      control = list(adapt_delta = 0.95, max_treedepth = 18),
+      seed = seed
+    )
+    
+    # save fitted model
+    qsave(draws_model3, file = paste0("outputs/fitted/draws-model3-", Sys.Date(), ".qs"))
+    
+    # free up some space
+    rm(draws_model3)
+    
+  }
   
 }
 
@@ -563,17 +570,17 @@ ggsave(
 #    A. donax affect fish species?
 model1a_effects <- draws_model1a %>% 
   spread_draws(
-    theta[species],
-    beta[species, predictor]
+    theta[species]#,
+    # beta[species, predictor]
   ) %>% 
   median_qi(
-    theta, beta,
+    theta, #beta,
     .width = c(0.95, 0.66)
   ) %>%
   mutate(
-    Species = colnames(paired_cpue)[species],
-    predictor = rownames(model1a_data$X)[predictor],
-    Predictor = predictor_names[predictor]
+    Species = colnames(paired_cpue)[species]#,
+    # predictor = rownames(model1a_data$X)[predictor],
+    # Predictor = predictor_names[predictor]
   )
 model1a_theta <- model1a_effects %>%
   select(contains("theta"), Species, .width, .point, .interval) %>%
@@ -583,31 +590,31 @@ model1a_theta <- model1a_effects %>%
   scale_color_brewer(type = "qual", palette = "Set2") +
   theme(legend.position = "none") +
   xlab("Parameter estimate")
-model1a_beta <- model1a_effects %>%
-  select(contains("beta"), Species, Predictor, .width, .point, .interval) %>%
-  ggplot(aes(y = Species, x = beta, xmin = beta.lower, xmax = beta.upper), position = position_dodge(0.4)) +
-  geom_pointinterval(position = position_dodge(0.4)) +
-  geom_vline(xintercept = 0, linetype = "dashed") +
-  facet_wrap( ~ Predictor, ncol = 4, scales = "free_x") +
-  scale_color_brewer(type = "qual", palette = "Set2", labels = c("A. donax absent", "A. donax present")) +
-  xlab("Parameter estimate") +
-  theme(legend.position = "bottom")
+# model1a_beta <- model1a_effects %>%
+#   select(contains("beta"), Species, Predictor, .width, .point, .interval) %>%
+#   ggplot(aes(y = Species, x = beta, xmin = beta.lower, xmax = beta.upper), position = position_dodge(0.4)) +
+#   geom_pointinterval(position = position_dodge(0.4)) +
+#   geom_vline(xintercept = 0, linetype = "dashed") +
+#   facet_wrap( ~ Predictor, ncol = 4, scales = "free_x") +
+#   scale_color_brewer(type = "qual", palette = "Set2", labels = c("A. donax absent", "A. donax present")) +
+#   xlab("Parameter estimate") +
+#   theme(legend.position = "bottom")
 
 # extract and plot parameters from model 1b: model of CPUE of fish diet guilds, how does
 #    A. donax affect fish species?
 model1b_effects <- draws_model1b %>% 
   spread_draws(
-    theta[guild],
-    beta[guild, predictor]
+    theta[guild] #,
+    # beta[guild, predictor]
   ) %>% 
   median_qi(
-    theta, beta,
+    theta, #beta,
     .width = c(0.95, 0.66)
   ) %>%
   mutate(
-    Guild = colnames(cpue_diet)[guild],
-    predictor = rownames(model1b_data$X)[predictor],
-    Predictor = predictor_names[predictor]
+    Guild = colnames(cpue_diet)[guild]#,
+    # predictor = rownames(model1b_data$X)[predictor],
+    # Predictor = predictor_names[predictor]
   )
 model1b_theta <- model1b_effects %>%
   select(contains("theta"), Guild, .width, .point, .interval) %>%
@@ -617,31 +624,31 @@ model1b_theta <- model1b_effects %>%
   scale_color_brewer(type = "qual", palette = "Set2") +
   theme(legend.position = "none") +
   xlab("Parameter estimate")
-model1b_beta <- model1b_effects %>%
-  select(contains("beta"), Guild, Predictor, .width, .point, .interval) %>%
-  ggplot(aes(y = Guild, x = beta, xmin = beta.lower, xmax = beta.upper), position = position_dodge(0.4)) +
-  geom_pointinterval(position = position_dodge(0.4)) +
-  geom_vline(xintercept = 0, linetype = "dashed") +
-  facet_wrap( ~ Predictor, ncol = 1, scales = "free_x") +
-  scale_color_brewer(type = "qual", palette = "Set2", labels = c("A. donax absent", "A. donax present")) +
-  xlab("Parameter estimate") +
-  theme(legend.position = "bottom")
+# model1b_beta <- model1b_effects %>%
+#   select(contains("beta"), Guild, Predictor, .width, .point, .interval) %>%
+#   ggplot(aes(y = Guild, x = beta, xmin = beta.lower, xmax = beta.upper), position = position_dodge(0.4)) +
+#   geom_pointinterval(position = position_dodge(0.4)) +
+#   geom_vline(xintercept = 0, linetype = "dashed") +
+#   facet_wrap( ~ Predictor, ncol = 1, scales = "free_x") +
+#   scale_color_brewer(type = "qual", palette = "Set2", labels = c("A. donax absent", "A. donax present")) +
+#   xlab("Parameter estimate") +
+#   theme(legend.position = "bottom")
 
 # extract and plot parameters from model 1c: model of CPUE of fish migration guilds, how does
 #    A. donax affect fish species?
 model1c_effects <- draws_model1c %>% 
   spread_draws(
-    theta[guild],
-    beta[guild, predictor]
+    theta[guild] #,
+    # beta[guild, predictor]
   ) %>% 
   median_qi(
-    theta, beta,
+    theta, #beta,
     .width = c(0.95, 0.66)
   ) %>%
   mutate(
-    Guild = colnames(cpue_migration)[guild],
-    predictor = rownames(model1c_data$X)[predictor],
-    Predictor = predictor_names[predictor]
+    Guild = colnames(cpue_migration)[guild]#,
+    # predictor = rownames(model1b_data$X)[predictor],
+    # Predictor = predictor_names[predictor]
   )
 model1c_theta <- model1c_effects %>%
   select(contains("theta"), Guild, .width, .point, .interval) %>%
@@ -651,31 +658,31 @@ model1c_theta <- model1c_effects %>%
   scale_color_brewer(type = "qual", palette = "Set2") +
   theme(legend.position = "none") +
   xlab("Parameter estimate")
-model1c_beta <- model1c_effects %>%
-  select(contains("beta"), Guild, Predictor, .width, .point, .interval) %>%
-  ggplot(aes(y = Guild, x = beta, xmin = beta.lower, xmax = beta.upper), position = position_dodge(0.4)) +
-  geom_pointinterval(position = position_dodge(0.4)) +
-  geom_vline(xintercept = 0, linetype = "dashed") +
-  facet_wrap( ~ Predictor, ncol = 1, scales = "free_x") +
-  scale_color_brewer(type = "qual", palette = "Set2", labels = c("A. donax absent", "A. donax present")) +
-  xlab("Parameter estimate") +
-  theme(legend.position = "bottom")
+# model1c_beta <- model1c_effects %>%
+#   select(contains("beta"), Guild, Predictor, .width, .point, .interval) %>%
+#   ggplot(aes(y = Guild, x = beta, xmin = beta.lower, xmax = beta.upper), position = position_dodge(0.4)) +
+#   geom_pointinterval(position = position_dodge(0.4)) +
+#   geom_vline(xintercept = 0, linetype = "dashed") +
+#   facet_wrap( ~ Predictor, ncol = 1, scales = "free_x") +
+#   scale_color_brewer(type = "qual", palette = "Set2", labels = c("A. donax absent", "A. donax present")) +
+#   xlab("Parameter estimate") +
+#   theme(legend.position = "bottom")
 
 # extract and plot parameters from model 1d: model of CPUE of fish habitat-use guilds, how does
 #    A. donax affect fish species?
 model1d_effects <- draws_model1d %>% 
   spread_draws(
-    theta[guild],
-    beta[guild, predictor]
+    theta[guild]#,
+    # beta[guild, predictor]
   ) %>% 
   median_qi(
-    theta, beta,
+    theta, #beta,
     .width = c(0.95, 0.66)
   ) %>%
   mutate(
-    Guild = colnames(cpue_habitat_use)[guild],
-    predictor = rownames(model1d_data$X)[predictor],
-    Predictor = predictor_names[predictor]
+    Guild = colnames(cpue_habitat_use)[guild]#,
+    # predictor = rownames(model1d_data$X)[predictor],
+    # Predictor = predictor_names[predictor]
   )
 model1d_theta <- model1d_effects %>%
   select(contains("theta"), Guild, .width, .point, .interval) %>%
@@ -685,15 +692,15 @@ model1d_theta <- model1d_effects %>%
   scale_color_brewer(type = "qual", palette = "Set2") +
   theme(legend.position = "none") +
   xlab("Parameter estimate")
-model1d_beta <- model1d_effects %>%
-  select(contains("beta"), Guild, Predictor, .width, .point, .interval) %>%
-  ggplot(aes(y = Guild, x = beta, xmin = beta.lower, xmax = beta.upper), position = position_dodge(0.4)) +
-  geom_pointinterval(position = position_dodge(0.4)) +
-  geom_vline(xintercept = 0, linetype = "dashed") +
-  facet_wrap( ~ Predictor, ncol = 1, scales = "free_x") +
-  scale_color_brewer(type = "qual", palette = "Set2", labels = c("A. donax absent", "A. donax present")) +
-  xlab("Parameter estimate") +
-  theme(legend.position = "bottom")
+# model1d_beta <- model1d_effects %>%
+#   select(contains("beta"), Guild, Predictor, .width, .point, .interval) %>%
+#   ggplot(aes(y = Guild, x = beta, xmin = beta.lower, xmax = beta.upper), position = position_dodge(0.4)) +
+#   geom_pointinterval(position = position_dodge(0.4)) +
+#   geom_vline(xintercept = 0, linetype = "dashed") +
+#   facet_wrap( ~ Predictor, ncol = 1, scales = "free_x") +
+#   scale_color_brewer(type = "qual", palette = "Set2", labels = c("A. donax absent", "A. donax present")) +
+#   xlab("Parameter estimate") +
+#   theme(legend.position = "bottom")
 
 # combine theta plots and save to file
 model1_theta <- model1a_theta | (model1b_theta / model1c_theta / model1d_theta)
@@ -708,25 +715,25 @@ ggsave(
 )
 
 # combine beta plots and save to file
-model1_beta <- model1b_beta | model1c_beta | model1d_beta
-ggsave(
-  model1_beta,
-  filename = "outputs/figures/model1_beta.png",
-  device = png,
-  width = 10,
-  height = 14,
-  units = "in", 
-  dpi = 600
-)
-ggsave(
-  model1a_beta,
-  filename = "outputs/figures/model1a_beta.png",
-  device = png,
-  width = 7,
-  height = 10,
-  units = "in", 
-  dpi = 600
-)
+# model1_beta <- model1b_beta | model1c_beta | model1d_beta
+# ggsave(
+#   model1_beta,
+#   filename = "outputs/figures/model1_beta.png",
+#   device = png,
+#   width = 10,
+#   height = 14,
+#   units = "in", 
+#   dpi = 600
+# )
+# ggsave(
+#   model1a_beta,
+#   filename = "outputs/figures/model1a_beta.png",
+#   device = png,
+#   width = 7,
+#   height = 10,
+#   units = "in", 
+#   dpi = 600
+# )
 
 # extract effects from model 2: how does A. donax affect species richness?
 origin_list <- c("Exotic", "Native", "Translocated")
