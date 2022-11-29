@@ -44,8 +44,8 @@ parameters {
   // linear predictor
   real zalpha_main;
   vector[Q] zalpha;
-  // row_vector[K] zbeta_main;
-  // matrix[Q, K] zbeta;
+  row_vector[K] zbeta_main;
+  matrix[Q, K] zbeta;
   real ztheta_main;
   vector[Q] ztheta;
   
@@ -74,7 +74,7 @@ parameters {
 
 transformed parameters {
   vector[Q] alpha;
-  // matrix[Q, K] beta;  
+  matrix[Q, K] beta;
   vector[Q] theta;
   matrix[Q, N] mu;
   vector[nflat] mu_flat;
@@ -82,8 +82,8 @@ transformed parameters {
 
   // rescale z-transformed covariates
   alpha = sigma_fixed * zalpha_main + sigma_random * sigma_alpha * zalpha;
-  // beta = sigma_fixed * rep_matrix(zbeta_main, Q) + 
-  //   sigma_random * rep_matrix(sigma_beta, Q) .* zbeta;
+  beta = sigma_fixed * rep_matrix(zbeta_main, Q) +
+    sigma_random * rep_matrix(sigma_beta, Q) .* zbeta;
   theta = sigma_fixed * ztheta_main + sigma_random * sigma_theta * ztheta;
 
   // calculate linear predictor
@@ -108,14 +108,14 @@ model {
   // z-scaled priors for regression terms
   zalpha_main ~ std_normal();
   zalpha ~ std_normal();
-  // zbeta_main ~ std_normal();
-  // to_vector(zbeta) ~ std_normal();
+  zbeta_main ~ std_normal();
+  to_vector(zbeta) ~ std_normal();
   ztheta_main ~ std_normal();
   ztheta ~ std_normal();
 
   // regression term pooling variances
   sigma_alpha ~ std_normal();
-  // sigma_beta ~ std_normal();
+  sigma_beta ~ std_normal();
   sigma_theta ~ std_normal();
   
   // priors for random effects
