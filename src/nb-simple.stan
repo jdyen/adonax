@@ -44,14 +44,14 @@ parameters {
   // linear predictor
   real zalpha_main;
   vector[Q] zalpha;
-  row_vector[K] zbeta_main;
-  matrix[Q, K] zbeta;
+  // row_vector[K] zbeta_main;
+  // matrix[Q, K] zbeta;
   real ztheta_main;
   vector[Q] ztheta;
   
   // pooling variances for coefficients
   real<lower=0> sigma_alpha;
-  row_vector<lower=0>[K] sigma_beta;
+  // row_vector<lower=0>[K] sigma_beta;
   real<lower=0> sigma_theta;
 
   // random effects
@@ -60,6 +60,9 @@ parameters {
   matrix[Q, nsite] gamma_site;
 
   // random effects variances
+  real<lower=0> sigma_main_basin;
+  real<lower=0> sigma_main_block;
+  real<lower=0> sigma_main_site;
   vector<lower=0>[Q] sigma_basin;
   vector<lower=0>[Q] sigma_block;
   vector<lower=0>[Q] sigma_site;
@@ -71,7 +74,7 @@ parameters {
 
 transformed parameters {
   vector[Q] alpha;
-  matrix[Q, K] beta;  
+  // matrix[Q, K] beta;  
   vector[Q] theta;
   matrix[Q, N] mu;
   vector[nflat] mu_flat;
@@ -79,18 +82,18 @@ transformed parameters {
 
   // rescale z-transformed covariates
   alpha = sigma_fixed * zalpha_main + sigma_random * sigma_alpha * zalpha;
-  beta = sigma_fixed * rep_matrix(zbeta_main, Q) + 
-    sigma_random * rep_matrix(sigma_beta, Q) .* zbeta;
+  // beta = sigma_fixed * rep_matrix(zbeta_main, Q) + 
+  //   sigma_random * rep_matrix(sigma_beta, Q) .* zbeta;
   theta = sigma_fixed * ztheta_main + sigma_random * sigma_theta * ztheta;
 
   // calculate linear predictor
   mu = rep_matrix(alpha, N) +
-    beta * X +
+    // beta * X +
     theta * arundo +
     sigma_random *
-    (rep_matrix(sigma_basin, N) .* gamma_basin[, basin] +
-     rep_matrix(sigma_block, N) .* gamma_block[, block_id] +
-     rep_matrix(sigma_site, N) .* gamma_site[, site]
+    (sigma_main_basin * rep_matrix(sigma_basin, N) .* gamma_basin[, basin] +
+     sigma_main_block * rep_matrix(sigma_block, N) .* gamma_block[, block_id] +
+     sigma_main_site * rep_matrix(sigma_site, N) .* gamma_site[, site]
     ) +
     log_scale_factor;
 
@@ -105,14 +108,14 @@ model {
   // z-scaled priors for regression terms
   zalpha_main ~ std_normal();
   zalpha ~ std_normal();
-  zbeta_main ~ std_normal();
-  to_vector(zbeta) ~ std_normal();
+  // zbeta_main ~ std_normal();
+  // to_vector(zbeta) ~ std_normal();
   ztheta_main ~ std_normal();
   ztheta ~ std_normal();
 
   // regression term pooling variances
   sigma_alpha ~ std_normal();
-  sigma_beta ~ std_normal();
+  // sigma_beta ~ std_normal();
   sigma_theta ~ std_normal();
   
   // priors for random effects

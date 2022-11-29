@@ -66,3 +66,13 @@ model {
   target += bernoulli_logit_lpmf(y | mu);
    
 }
+
+generated quantities {
+  int<lower=0,upper=1> ypred[N];
+  
+  // random draws from the posterior of mu and phi for posterior checks
+  for (i in 1:N) {
+    ypred[i] = bernoulli_logit_rng(mu[i]);
+  }
+  
+}
