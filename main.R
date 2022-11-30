@@ -296,9 +296,9 @@ model3_data$Q <- max(model3_data$species)
 
 # settings for all MCMC models
 seed <- 352124142
-iter <- 1000
+iter <- 10000
 warmup <- floor(iter / 2)
-thin <- 1 #4
+thin <- 4
 chains <- 4
 cores <- 4
 
