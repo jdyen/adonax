@@ -1,3 +1,8 @@
+# function to rebase a factor variable
+rebase_factor <- function(x, ...) {
+  as.integer(as.factor(x))
+}
+
 # function to calculate posterior predictive plot from stan model draws
 #   and stan data list
 # - breaks and xlim must be specified. xlim is open at hte lower bound and 
@@ -7,7 +12,7 @@ pp_check <- function(draws, obs, breaks, xlim) {
   # pull out predicted values
   pred <- draws %>%
     gather_draws(ypred[idx])
-
+  
   # calculate count frequencies for both
   density_observed <- hist(obs[obs > xlim[1] & obs <= xlim[2]], breaks = breaks, plot = FALSE)
   density_pred <- pred %>%
