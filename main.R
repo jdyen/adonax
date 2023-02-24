@@ -339,6 +339,8 @@ if (refit_models) {
   # sample from model for species richness by classification (native or otherwise)
   # compile model
   model2b_stan <- stan_model("src/nb-simple-no-origin.stan")
+
+  # sample from model
   draws_model2b <- sampling(
     model2b_stan,
     data = model2b_data,
@@ -552,7 +554,7 @@ ggsave(
 
 # extract effects from model 2: how does A. donax affect species richness?
 origin_list <- c("Exotic", "Native", "Translocated")
-model2b_effects <- draws_model2 %>% 
+model2b_effects <- draws_model2b %>% 
   spread_draws(
     theta[origin],
     beta[origin, predictor],
@@ -697,7 +699,7 @@ model1_fitted <- draws_model1 %>%
 model2a_fitted <- draws_model2a %>%
   gather_draws(mu[species, obs]) %>%
   median_qi()
-model2b_fitted <- draws_model2 %>%
+model2b_fitted <- draws_model2b %>%
   gather_draws(mu[origin, obs]) %>%
   median_qi()
 model2c_fitted <- draws_model2c %>%
@@ -797,7 +799,7 @@ model1_pp <- pp_check(draws_model1, model1_data$y, breaks = seq(-0.5, 1.5, by = 
   ggtitle("Model 1")
 model2a_pp <- pp_check(draws_model2a, model2a_data$yflat, breaks = seq(-0.5, 101, by = 1), xlim = c(-0.5, 100)) + 
   ggtitle("Model 2a")
-model2b_pp <- pp_check(draws_model2, model2b_data$yflat, breaks = seq(-0.5, 225, by = 1), xlim = c(-0.5, 220)) + 
+model2b_pp <- pp_check(draws_model2b, model2b_data$yflat, breaks = seq(-0.5, 225, by = 1), xlim = c(-0.5, 220)) + 
   ggtitle("Model 2b")
 model2c_pp <- pp_check(draws_model2c, model2c_data$y, breaks = seq(-0.5, 285, by = 1), xlim = c(-0.5, 280)) + 
   ggtitle("Model 2c")
