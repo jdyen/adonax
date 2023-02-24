@@ -17,11 +17,9 @@ data {
   row_vector[N] arundo;
 
   // random effects
-  int<lower=0> norigin;
   int<lower=0> nbasin;
   int<lower=0> nblock;
   int<lower=0> nsite;
-  int<lower=1,upper=norigin> origin[Q, nbasin];
   int<lower=1,upper=nbasin> basin[N];
   int<lower=1,upper=nblock> block_id[N];
   int<lower=1,upper=nsite> site[N];
@@ -60,7 +58,6 @@ parameters {
   real<lower=0> sigma_theta;
 
   // random effects
-  matrix[norigin, nbasin] gamma_origin;
   matrix[Q, nbasin] gamma_basin;
   matrix[Q, nblock] gamma_block;
   matrix[Q, nsite] gamma_site;
@@ -69,7 +66,6 @@ parameters {
   real<lower=0> sigma_main_basin;
   real<lower=0> sigma_main_block;
   real<lower=0> sigma_main_site;
-  real<lower=0> sigma_origin;
   vector<lower=0>[Q] sigma_basin;
   vector<lower=0>[Q] sigma_block;
   vector<lower=0>[Q] sigma_site;
@@ -88,7 +84,6 @@ transformed parameters {
   matrix[Q, K] beta;
   matrix[Q, K] delta;
   vector[Q] theta;
-  matrix[Q, N] origin_term;
   matrix[Q, N] mu;
   vector[nflat] mu_flat;
   vector[nflat] phi_flat;
@@ -102,16 +97,11 @@ transformed parameters {
     sigma_random * rep_matrix(sigma_delta, Q) .* zdelta;
   theta = sigma_fixed * ztheta_main + sigma_random * sigma_theta * ztheta;
 
-  // calculate origin for each basin and species
-  for (i in 1:N)
-    origin_term[, i] = sigma_random * sigma_origin * gamma_origin[origin[, basin[i]], basin[i]];
-
   // calculate linear predictor
   mu = rep_matrix(alpha, N) +
     beta * X +
     delta * (rep_matrix(arundo, K) .* X) +
     theta * arundo +
-    origin_term +
     sigma_random *
     (sigma_main_basin * rep_matrix(sigma_basin, N) .* gamma_basin[, basin] +
      sigma_main_block * rep_matrix(sigma_block, N) .* gamma_block[, block_id] +
@@ -145,7 +135,6 @@ model {
   sigma_eps ~ std_normal();
   
   // priors for random effects
-  to_vector(gamma_origin) ~ std_normal();
   to_vector(gamma_basin) ~ std_normal();
   to_vector(gamma_block) ~ std_normal();
   to_vector(gamma_site) ~ std_normal();
@@ -154,7 +143,6 @@ model {
   sigma_main_basin ~ std_normal();
   sigma_main_block ~ std_normal();
   sigma_main_site ~ std_normal();
-  sigma_origin ~ std_normal();
   sigma_basin ~ std_normal();
   sigma_block ~ std_normal();
   sigma_site ~ std_normal();
