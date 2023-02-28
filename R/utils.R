@@ -18,13 +18,12 @@ pp_check <- function(draws, obs, breaks, xlim) {
   density_pred <- pred %>%
     filter(.value > xlim[1], .value <= xlim[2]) %>%
     group_by(.chain, .iteration, .draw) %>%
-    summarise(
+    reframe(
       idx  = hist(.value, breaks = breaks, plot = FALSE)$mids,
       val = hist(.value, breaks = breaks, plot = FALSE)$count
     ) %>%
-    ungroup() %>%
     group_by(idx) %>%
-    summarise(
+    reframe(
       lower = quantile(val, p = 0.1),
       upper = quantile(val, p = 0.9),
       val = median(val)

@@ -18,7 +18,7 @@ library(tidybayes)
 library(ROCR)
 
 # set a flag to re-run models
-refit_models <- TRUE
+refit_models <- FALSE
 
 # load some helper functions
 source("R/utils.R")
@@ -496,6 +496,7 @@ ggsave(
 
 # extract and plot parameters from model 1a: model of fish CPUE, how does
 #    A. donax affect fish species?
+model2a_sample_size <- paired_cpue %>% summarise_all(~sum(.x > 0))
 model2a_effects <- draws_model2a %>% 
   spread_draws(
     theta[species],
@@ -508,6 +509,7 @@ model2a_effects <- draws_model2a %>%
   ) %>%
   mutate(
     Species = colnames(paired_cpue)[species],
+    Species = paste0(paste(Species, model2a_sample_size[Species], sep = " (n = "), ")"),
     predictor = rownames(model2a_data$X)[predictor],
     Predictor = predictor_names[predictor]
   )
@@ -546,8 +548,8 @@ ggsave(
   model2a_beta,
   filename = "outputs/figures/Fig4.png",
   device = png,
-  width = 7,
-  height = 10,
+  width = 9,
+  height = 12,
   units = "in",
   dpi = 600
 )
@@ -611,6 +613,9 @@ ggsave(
 )
 
 # extract and plot parameters from model 3: SMI model
+model2c_sample_size <- smi_full %>% 
+  group_by(SPECIES) %>%
+  summarise(count = n())
 model2c_effects <- draws_model2c %>% 
   spread_draws(
     theta_main,
@@ -634,6 +639,10 @@ model2c_effects <- draws_model2c %>%
     Species = levels(factor(smi_full$SPECIES))[species],
     predictor = colnames(model2c_data$X)[predictor],
     Predictor = predictor_names[predictor]
+  ) %>%
+  left_join(model2c_sample_size, by = c("Species" = "SPECIES")) %>%
+  mutate(
+    Species = paste0(paste(Species, count, sep = " (n = "), ")"),
   )
 model2c_theta <- model2c_effects %>%
   select(contains("theta"), theta.lower, theta.upper, Species, .width, .point, .interval) %>%
