@@ -383,6 +383,45 @@ if (refit_models) {
   
 }
 
+# calculate sample sizes with and without A. donax for models 2a and 2c
+#    (species-level analyses)
+model2a_sample_size <- paired_cpue %>% 
+  group_by(paired_fish %>% pull(Arundo)) %>%
+  summarise_all(~sum(.x > 0))
+model2a_sample_size <- tibble(
+  GROUP = colnames(model2a_sample_size)[-1],
+  with_adonax = unlist(model2a_sample_size[2, -1]),
+  without_adonax = unlist(model2a_sample_size[1, -1])
+)
+model2b_sample_size <- paired_richness %>% 
+  group_by(paired_fish %>% pull(Arundo)) %>%
+  summarise_all(~sum(.x > 0))
+model2b_sample_size <- tibble(
+  GROUP = colnames(model2b_sample_size)[-1],
+  with_adonax = unlist(model2b_sample_size[2, -1]),
+  without_adonax = unlist(model2b_sample_size[1, -1])
+)
+model2c_sample_size <- smi_full %>% 
+  group_by(SPECIES, Arundo) %>%
+  summarise(count = n()) %>%
+  mutate(Arundo = ifelse(Arundo == 0, "without_adonax", "with_adonax")) %>%
+  pivot_wider(
+    id_cols = SPECIES,
+    names_from = Arundo, 
+    values_from = count
+  ) %>%
+  mutate(without_adonax = ifelse(is.na(without_adonax), 0, without_adonax)) %>%
+  rename(GROUP = SPECIES)
+sample_sizes <- rbind(
+  c(GROUP = "Model 2a", with_adonax = "", without_adonax = ""),
+  model2a_sample_size,
+  c(GROUP = "Model 2b", with_adonax = "", without_adonax = ""),
+  model2b_sample_size,
+  c(GROUP = "Model 2c", with_adonax = "", without_adonax = ""),
+  model2c_sample_size
+)
+write.csv(sample_sizes, file = "outputs/tables/Table3.csv")
+
 # load all fitted models
 file_names <- c(
   "draws-model1",
@@ -496,7 +535,6 @@ ggsave(
 
 # extract and plot parameters from model 1a: model of fish CPUE, how does
 #    A. donax affect fish species?
-model2a_sample_size <- paired_cpue %>% summarise_all(~sum(.x > 0))
 model2a_effects <- draws_model2a %>% 
   spread_draws(
     theta[species],
@@ -509,7 +547,6 @@ model2a_effects <- draws_model2a %>%
   ) %>%
   mutate(
     Species = colnames(paired_cpue)[species],
-    Species = paste0(paste(Species, model2a_sample_size[Species], sep = " (n = "), ")"),
     predictor = rownames(model2a_data$X)[predictor],
     Predictor = predictor_names[predictor]
   )
@@ -613,9 +650,6 @@ ggsave(
 )
 
 # extract and plot parameters from model 3: SMI model
-model2c_sample_size <- smi_full %>% 
-  group_by(SPECIES) %>%
-  summarise(count = n())
 model2c_effects <- draws_model2c %>% 
   spread_draws(
     theta_main,
@@ -639,10 +673,6 @@ model2c_effects <- draws_model2c %>%
     Species = levels(factor(smi_full$SPECIES))[species],
     predictor = colnames(model2c_data$X)[predictor],
     Predictor = predictor_names[predictor]
-  ) %>%
-  left_join(model2c_sample_size, by = c("Species" = "SPECIES")) %>%
-  mutate(
-    Species = paste0(paste(Species, count, sep = " (n = "), ")"),
   )
 model2c_theta <- model2c_effects %>%
   select(contains("theta"), theta.lower, theta.upper, Species, .width, .point, .interval) %>%
@@ -801,7 +831,7 @@ fit_stats <- data.frame(
 )
 fit_stats <- fit_stats %>%
   mutate(model = gsub("draws_m", "M", model))
-write.csv(fit_stats, file = "outputs/tables/fit-statistics.csv")
+write.csv(fit_stats, file = "outputs/tables/Table2.csv")
 
 # calculate posterior predictive distributions and plot against observed data
 model1_pp <- pp_check(draws_model1, model1_data$y, breaks = seq(-0.5, 1.5, by = 1), xlim = c(-0.5, 1.5)) + 
