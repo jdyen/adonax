@@ -16,6 +16,7 @@ library(ggplot2)
 library(patchwork)
 library(tidybayes)
 library(ROCR)
+library(ragg)
 
 # set a flag to re-run models
 refit_models <- FALSE
@@ -174,6 +175,33 @@ model2a_data$nsite <- max(model2a_data$site)
 # and add response variable and zero identifiers
 model2a_data$yflat <- round(c(t(paired_cpue)) * model2a_data$scale_factor)
 model2a_data$nflat <- length(model2a_data$yflat)
+
+# basic plot to tease out effects of channel conservation
+channel_cons_check <- data.frame(
+  y = c(t(paired_cpue)),
+  block = rep(model2a_data$block_id, each = ncol(paired_cpue)),
+  species = rep(colnames(paired_cpue), times = nrow(paired_cpue)),
+  x = rep(paired_predictors$Channel_conservation, each = ncol(paired_cpue)),
+  arundo = rep(model2a_data$arundo, each = ncol(paired_cpue))
+)
+p <- channel_cons_check %>%
+  mutate(
+    arundo = factor(arundo, levels = c("0", "1"), labels = c("Absent", "Present")),
+    y = y + 1
+  ) %>%
+  ggplot(aes(y = y, x = x, col = arundo)) +
+  geom_point() +
+  scale_y_log10() +
+  facet_wrap( ~ species)
+ggsave(
+  filename = "outputs/figures/check_ch_cons.png",
+  plot = p,
+  device = ragg::agg_png,
+  width = 10,
+  height = 8,
+  dpi = 600,
+  units = "in"
+)
 
 # grab summary stats for model 2
 paired_richness <- paired_fish %>%
@@ -542,7 +570,7 @@ model2a_effects <- draws_model2a %>%
     delta[species, predictor]
   ) %>% 
   median_qi(
-    theta, beta, delta = theta + delta,
+    theta, beta, delta = beta + delta,
     .width = c(0.95, 0.66)
   ) %>%
   mutate(
@@ -853,3 +881,179 @@ ggsave(
   units = "in", 
   dpi = 600
 )
+
+# work out posterior odds for covariates in each model
+# Model 1
+ppm_model1 <- draws_model1 %>%
+  spread_draws(beta[Predictor]) %>%
+  mutate(
+    Predictor = colnames(model1_data$X)[Predictor],
+    Predictor = predictor_names[Predictor],
+    beta_gtzero = ifelse(beta > 0, 1, 0)
+  ) %>%
+  group_by(Predictor) %>%
+  summarise(beta_pp = mean(beta_gtzero)) %>%
+  mutate(
+    posterior_odds_beta = beta_pp / (1 - beta_pp),
+    Model = "Model 1"
+  ) %>%
+  select(Model, Predictor, beta_pp, posterior_odds_beta)
+
+# Model 2a
+ppm_model2a_theta <- draws_model2a %>%
+  spread_draws(theta[species]) %>%
+  mutate(
+    Species = colnames(paired_cpue)[species],
+    theta_gtzero = ifelse(theta > 0, 1, 0)
+  ) %>%
+  group_by(Species) %>%
+  summarise(ad_effect_pp = mean(theta_gtzero)) %>%
+  mutate(
+    posterior_odds_ad_effect = ad_effect_pp / (1 - ad_effect_pp),
+    Model = "Model 2a"
+  ) %>%
+  select(Model, Species, ad_effect_pp, posterior_odds_ad_effect)
+ppm_model2a <- draws_model2a %>% 
+  spread_draws(
+    beta[species, predictor],
+    delta[species, predictor]
+  ) %>%
+  mutate(
+    Species = colnames(paired_cpue)[species],
+    predictor = rownames(model2a_data$X)[predictor],
+    Predictor = predictor_names[predictor]
+  ) %>%
+  mutate(
+    delta = beta + delta,
+    beta_gtzero = ifelse(beta > 0, 1, 0),
+    delta_gtzero = ifelse(delta > 0, 1, 0)
+  ) %>%
+  group_by(Species, Predictor) %>%
+  summarise(
+    beta_ad_absent_pp = mean(beta_gtzero),
+    beta_ad_present_pp = mean(delta_gtzero)
+  ) %>%
+  mutate(
+    posterior_odds_ad_absent = beta_ad_absent_pp / (1 - beta_ad_absent_pp),
+    posterior_odds_ad_present = beta_ad_present_pp / (1 - beta_ad_present_pp),
+    Model = "Model 2a"
+  ) %>%
+  select(
+    Model, Predictor, Species,
+    beta_ad_absent_pp, posterior_odds_ad_absent,
+    beta_ad_present_pp, posterior_odds_ad_present
+  ) %>%
+  arrange(Model, Predictor, Species)
+
+# Model 2b
+ppm_model2b_theta <- draws_model2b %>%
+  spread_draws(theta[origin]) %>%
+  mutate(
+    Species = origin_list[origin],
+    theta_gtzero = ifelse(theta > 0, 1, 0)
+  ) %>%
+  group_by(Species) %>%
+  summarise(ad_effect_pp = mean(theta_gtzero)) %>%
+  mutate(
+    posterior_odds_ad_effect = ad_effect_pp / (1 - ad_effect_pp),
+    Model = "Model 2b"
+  ) %>%
+  select(Model, Species, ad_effect_pp, posterior_odds_ad_effect)
+ppm_model2b <- draws_model2b %>% 
+  spread_draws(
+    beta[origin, predictor],
+    delta[origin, predictor]
+  ) %>%
+  mutate(
+    Species = origin_list[origin],
+    predictor = rownames(model2a_data$X)[predictor],
+    Predictor = predictor_names[predictor]
+  ) %>%
+  mutate(
+    delta = beta + delta,
+    beta_gtzero = ifelse(beta > 0, 1, 0),
+    delta_gtzero = ifelse(delta > 0, 1, 0)
+  ) %>%
+  group_by(Species, Predictor) %>%
+  summarise(
+    beta_ad_absent_pp = mean(beta_gtzero),
+    beta_ad_present_pp = mean(delta_gtzero)
+  ) %>%
+  mutate(
+    posterior_odds_ad_absent = beta_ad_absent_pp / (1 - beta_ad_absent_pp),
+    posterior_odds_ad_present = beta_ad_present_pp / (1 - beta_ad_present_pp),
+    Model = "Model 2b"
+  ) %>%
+  select(
+    Model, Predictor, Species,
+    beta_ad_absent_pp, posterior_odds_ad_absent,
+    beta_ad_present_pp, posterior_odds_ad_present
+  ) %>%
+  arrange(Model, Predictor, Species)
+
+# Model 2c
+ppm_model2c_theta <- draws_model2c %>%
+  spread_draws(theta_main, theta[species]) %>% 
+  mutate(
+    Species = levels(factor(smi_full$SPECIES))[species],
+    theta = theta_main + theta,
+    theta_gtzero = ifelse(theta > 0, 1, 0)
+  ) %>%
+  group_by(Species) %>%
+  summarise(ad_effect_pp = mean(theta_gtzero)) %>%
+  mutate(
+    posterior_odds_ad_effect = ad_effect_pp / (1 - ad_effect_pp),
+    Model = "Model 2c"
+  ) %>%
+  select(Model, Species, ad_effect_pp, posterior_odds_ad_effect)
+ppm_model2c <- draws_model2c %>% 
+  spread_draws(
+    sigma_beta[predictor],
+    zbeta_main[predictor],
+    zbeta[species, predictor],
+    sigma_delta[predictor],
+    zdelta_main[predictor],
+    zdelta[species, predictor]
+  ) %>% 
+  mutate(
+    Species = levels(factor(smi_full$SPECIES))[species],
+    predictor = colnames(model2c_data$X)[predictor],
+    Predictor = predictor_names[predictor],
+    beta = model2c_data$sigma_fixed * zbeta_main +
+      model2c_data$sigma_random * sigma_beta * zbeta,
+    delta = beta + model2c_data$sigma_fixed * zdelta_main +
+      model2c_data$sigma_random * sigma_delta * zdelta,
+    beta_gtzero = ifelse(beta > 0, 1, 0),
+    delta_gtzero = ifelse(delta > 0, 1, 0)
+  ) %>%
+  group_by(Species, Predictor) %>%
+  summarise(
+    beta_ad_absent_pp = mean(beta_gtzero),
+    beta_ad_present_pp = mean(delta_gtzero)
+  ) %>%
+  mutate(
+    posterior_odds_ad_absent = beta_ad_absent_pp / (1 - beta_ad_absent_pp),
+    posterior_odds_ad_present = beta_ad_present_pp / (1 - beta_ad_present_pp),
+    Model = "Model 2c"
+  ) %>%
+  select(
+    Model, Predictor, Species,
+    beta_ad_absent_pp, posterior_odds_ad_absent,
+    beta_ad_present_pp, posterior_odds_ad_present
+  ) %>%
+  arrange(Model, Predictor, Species)
+
+# combine these and write to table
+write.csv(ppm_model1, file = "outputs/tables/TableS1.csv")
+ppm_theta <- bind_rows(
+  ppm_model2a_theta,
+  ppm_model2b_theta,
+  ppm_model2c_theta
+)
+write.csv(ppm_theta, file = "outputs/tables/TableS2.csv")
+ppm_beta <- bind_rows(
+  ppm_model2a,
+  ppm_model2b,
+  ppm_model2c
+)
+write.csv(ppm_beta, file = "outputs/tables/TableS3.csv")
