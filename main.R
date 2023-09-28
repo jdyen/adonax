@@ -4,7 +4,7 @@
 # Authors: Alberto Maceda Veiga, Ralph Mac Nally, Jian Yen
 # Analysis: Jian Yen
 #
-# last updated: 24 February 2023
+# last updated: 28 September 2023
 
 # load packages
 library(qs)
@@ -73,6 +73,9 @@ smi <- read_xlsx(
 
 # load list of paired sites for model 1
 paired_sites <- read_xlsx("data/BD_Arundo.xlsx")
+
+# finally, load fd data
+fd <- read_xlsx("data/Functional diversity indices.xlsx")
 
 # prepare data for model 0.1 and model 0.2
 model1_predictors <- cpue %>%
@@ -307,6 +310,91 @@ model2c_data$nfamily <- max(model2c_data$family)
 model2c_data$ngenus <- max(model2c_data$genus)
 model2c_data$Q <- max(model2c_data$species)
 
+# prepare data for model 3 (functional diversity indices)
+# filter data to paired sites
+paired_fd <- paired_sites %>%
+  left_join(fd, by = c("CODE1")) |>
+  left_join(cpue |> select(CODE1, Basin), by = "CODE1")
+
+# remove any blcoks with missing response values
+include <- paired_fd |>
+  group_by(BLOCK) |>
+  summarise(include = !(anyNA(FSpe) | anyNA(FOri) | anyNA(FEnt)))
+paired_fd <- paired_fd |>
+  left_join(include, by = "BLOCK") |>
+  filter(include) |>
+  select(-include)
+
+# paired up predictor variables
+paired_fd_predictors <- paired_fd |>
+  select(-Basin, -BLOCK, -CODE2, -Arundo, -FSpe, -FOri, -FEnt) |>
+  left_join(
+    cpue |>
+      select(
+        CODE1,
+        Stream_order, Elevation, Water_temperature,
+        Water_depth, Water_velocity, Conductivity, pH, 
+        ammonia_no2, nitrate_phosphate, Channel_conservation,
+        Habitat_diversity
+      ),
+    by = "CODE1"
+  ) |>
+  select(-CODE1)
+
+# combine into a list
+model3_data <- list(
+  N = nrow(paired_fd),
+  Q = ncol(paired_fd |> select(FSpe, FOri, FEnt)),
+  K = ncol(paired_fd_predictors),
+  X = t(scale(paired_fd_predictors)),
+  arundo = paired_fd %>% pull(Arundo),
+  basin = paired_fd %>% pull(Basin) %>% rebase_factor(),
+  block_id = paired_fd %>% pull(BLOCK) %>% rebase_factor(),
+  site = paired_fd %>% pull(CODE1) %>% rebase_factor(),
+  sigma_fixed = 5.,
+  sigma_covar = 2.,
+  sigma_resid = 2.,
+  sigma_random = 2.,
+  scale_factor = 1.
+)
+
+# add random effect counts
+model3_data$nbasin <- max(model3_data$basin)
+model3_data$nblock <- max(model3_data$block_id)
+model3_data$nsite <- max(model3_data$site)
+
+# setup data for each response separately
+model3a_data <- list(
+  N = nrow(paired_fd),
+  Q = ncol(paired_fd |> select(FSpe, FOri, FEnt)),
+  K = ncol(paired_fd_predictors),
+  X = scale(paired_fd_predictors),
+  arundo = paired_fd %>% pull(Arundo),
+  basin = paired_fd %>% pull(Basin) %>% rebase_factor(),
+  block_id = paired_fd %>% pull(BLOCK) %>% rebase_factor(),
+  site = paired_fd %>% pull(CODE1) %>% rebase_factor(),
+  sigma_fixed = 5.,
+  sigma_random = 2.
+)
+
+# add random effect counts
+model3a_data$nbasin <- max(model3a_data$basin)
+model3a_data$nblock <- max(model3a_data$block_id)
+model3a_data$nsite <- max(model3a_data$site)
+
+# replicate the data (without response variable) for all three responses
+model3b_data <- model3c_data <- model3a_data
+
+# add a small increment to the paired_fd values
+eps <- 1e-3
+paired_fd <- paired_fd |>
+  mutate(FSpe = FSpe + eps, FOri = FOri + eps, FEnt = FEnt + eps)
+
+# and add response variable and zero identifiers
+model3a_data$y <- c(t(paired_fd |> select(FSpe)))
+model3b_data$y <- c(t(paired_fd |> select(FOri)))
+model3c_data$y <- c(t(paired_fd |> select(FEnt)))
+
 # settings for all MCMC models
 seed <- 352124142
 iter <- 10000
@@ -409,6 +497,67 @@ if (refit_models) {
   # free up some space
   rm(draws_model2c)
   
+  # sample from model for functional diversity by type (Spe, Ori, Ent)
+  # compile model
+  model3_stan <- stan_model("src/lnorm-simple-no-origin-no-q.stan")
+  
+  # sample from model
+  draws_model3a <- sampling(
+    model3_stan,
+    data = model3a_data,
+    iter = iter,
+    warmup = warmup,
+    chains = chains,
+    thin = thin,
+    cores = cores,
+    control = list(adapt_delta = 0.95, max_treedepth = 18),
+    seed = seed
+  )
+  
+  # save fitted model
+  qsave(draws_model3a, file = paste0("outputs/fitted/draws-model3a-", Sys.Date(), ".qs"))
+  
+  # free up some space
+  rm(draws_model3a)
+
+  # sample from model
+  draws_model3b <- sampling(
+    model3_stan,
+    data = model3b_data,
+    iter = iter,
+    warmup = warmup,
+    chains = chains,
+    thin = thin,
+    cores = cores,
+    control = list(adapt_delta = 0.95, max_treedepth = 18),
+    seed = seed
+  )
+  
+  # save fitted model
+  qsave(draws_model3b, file = paste0("outputs/fitted/draws-model3b-", Sys.Date(), ".qs"))
+  
+  # free up some space
+  rm(draws_model3b)
+
+  # sample from model
+  draws_model3c <- sampling(
+    model3_stan,
+    data = model3c_data,
+    iter = iter,
+    warmup = warmup,
+    chains = chains,
+    thin = thin,
+    cores = cores,
+    control = list(adapt_delta = 0.95, max_treedepth = 18),
+    seed = seed
+  )
+  
+  # save fitted model
+  qsave(draws_model3c, file = paste0("outputs/fitted/draws-model3c-", Sys.Date(), ".qs"))
+  
+  # free up some space
+  rm(draws_model3c)
+  
 }
 
 # calculate sample sizes with and without A. donax for models 2a and 2c
@@ -455,7 +604,10 @@ file_names <- c(
   "draws-model1",
   "draws-model2a",
   "draws-model2b",
-  "draws-model2c"
+  "draws-model2c",
+  "draws-model3a",
+  "draws-model3b",
+  "draws-model3c"
 )
 
 # loop over each and load most recent version
@@ -473,7 +625,10 @@ model_names <- c(
   "draws_model1",
   "draws_model2a",
   "draws_model2b", 
-  "draws_model2c"
+  "draws_model2c",
+  "draws_model3a",
+  "draws_model3b",
+  "draws_model3c"
 )
 model_summaries <- vector("list", length = length(model_names))
 for (i in seq_along(model_names))
@@ -498,10 +653,6 @@ diagnostic_plot <- diagnostics %>%
   mutate(
     model = gsub("draws_", "", model),
     model = gsub("model", "Model ", model),
-    model = gsub("Model 2", "Model 2b", model),
-    model = gsub("Model 1a", "Model 2a", model),
-    model = gsub("Model 3", "Model 2c", model),
-    model = gsub("Model 0", "Model 1", model),
     statistic = gsub("n_eff", "Effective sample size", statistic)
   ) %>%
   ggplot() +
@@ -753,6 +904,102 @@ ggsave(
   dpi = 600
 )
 
+# extract effects from model 2: how does A. donax affect species richness?
+index_list <- c("FSpe", "FOri", "FEnt")
+model3a_effects <- draws_model3a %>% 
+  spread_draws(
+    theta,
+    beta[predictor],
+    delta[predictor]
+  ) %>% 
+  median_qi(
+    theta, beta, delta = beta + delta,
+    .width = c(0.95, 0.66)
+  ) %>%
+  mutate(
+    predictor = rownames(model3_data$X)[predictor],
+    Predictor = predictor_names[predictor]
+  )
+model3b_effects <- draws_model3b %>% 
+  spread_draws(
+    theta,
+    beta[predictor],
+    delta[predictor]
+  ) %>% 
+  median_qi(
+    theta, beta, delta = beta + delta,
+    .width = c(0.95, 0.66)
+  ) %>%
+  mutate(
+    predictor = rownames(model3_data$X)[predictor],
+    Predictor = predictor_names[predictor]
+  )
+model3c_effects <- draws_model3c %>% 
+  spread_draws(
+    theta,
+    beta[predictor],
+    delta[predictor]
+  ) %>% 
+  median_qi(
+    theta, beta, delta = beta + delta,
+    .width = c(0.95, 0.66)
+  ) %>%
+  mutate(
+    predictor = rownames(model3_data$X)[predictor],
+    Predictor = predictor_names[predictor]
+  )
+model3_effects <- bind_rows(model3a_effects, model3b_effects, model3c_effects) |>
+  mutate(Index = rep(index_list, times = c(nrow(model3a_effects), nrow(model3b_effects), nrow(model3c_effects))))
+model3_theta <- model3_effects %>%
+  select(contains("theta"), Index, .width, .point, .interval) %>%
+  ggplot(aes(y = Index, x = theta, xmin = theta.lower, xmax = theta.upper)) +
+  geom_pointinterval() +
+  geom_vline(xintercept = 0, linetype = "dashed") +
+  scale_color_brewer(type = "qual", palette = "Set2") +
+  theme(legend.position = "none") +
+  xlab("Parameter estimate")
+model3_beta <- model3_effects %>%
+  select(contains("beta"), contains("delta"), Index, Predictor, .width, .point, .interval) %>%
+  pivot_longer(cols = c(contains("beta"), contains("delta"))) %>%
+  mutate(
+    level = "mid",
+    level = ifelse(grepl("lower", name), "lower", level),
+    level = ifelse(grepl("upper", name), "upper", level),
+    name = gsub("\\.lower|\\.upper", "", name)
+  ) %>%
+  pivot_wider(
+    id_cols = c(Index, Predictor, .width, .point, .interval, name),
+    names_from = level,
+    values_from = value
+  ) %>%
+  ggplot(aes(y = Predictor, x = mid, xmin = lower, xmax = upper, col = name), position = position_dodge(0.4)) +
+  geom_pointinterval(position = position_dodge(0.4)) +
+  geom_vline(xintercept = 0, linetype = "dashed") +
+  facet_wrap( ~ Index, ncol = 3, scales = "free_x") +
+  scale_color_brewer(type = "qual", palette = "Set2", labels = c("A. donax absent", "A. donax present")) +
+  xlab("Parameter estimate") +
+  theme(legend.position = "bottom")
+
+# save plots to file
+ggsave(
+  model3_beta,
+  filename = "outputs/figures/Fig-fd-beta.png",
+  device = png,
+  width = 8,
+  height = 6,
+  units = "in", 
+  dpi = 600
+)
+ggsave(
+  model3_theta,
+  filename = "outputs/figures/Fig-fd-theta.png",
+  device = png,
+  width = 8,
+  height = 6,
+  units = "in", 
+  dpi = 600
+)
+
 # extract fitted values
 model1_fitted <- draws_model1 %>% 
   gather_draws(mu[obs]) %>% 
@@ -772,6 +1019,15 @@ model2b_fitted <- draws_model2b %>%
 model2c_fitted <- draws_model2c %>%
   gather_draws(mu[obs]) %>%
   median_qi()
+model3a_fitted <- draws_model3a %>%
+  gather_draws(mu[obs]) %>%
+  median_qi()
+model3b_fitted <- draws_model3b %>%
+  gather_draws(mu[obs]) %>%
+  median_qi()
+model3c_fitted <- draws_model3c %>%
+  gather_draws(mu[obs]) %>%
+  median_qi()
 
 # calculate fit stats for model 0a and 0b
 model1_pred <- prediction(model1_fitted$fitted, model1_fitted$observed)
@@ -786,32 +1042,47 @@ fitted_values <- data.frame(
       length(model1_curve@y.values[[1]]),
       nrow(model2a_fitted),
       nrow(model2b_fitted),
-      nrow(model2c_fitted)
+      nrow(model2c_fitted),
+      nrow(model3a_fitted),
+      nrow(model3b_fitted),
+      nrow(model3c_fitted)
     )
   ),
   fitted = c(
     model1_curve@y.values[[1]],
     exp(model2a_fitted$.value - log(model2a_data$scale_factor)),
     exp(model2b_fitted$.value),
-    exp(model2c_fitted$.value)
+    exp(model2c_fitted$.value),
+    exp(model3a_fitted$.value),
+    exp(model3b_fitted$.value),
+    exp(model3c_fitted$.value)
   ),
   lower = c(
     rep(NA, length(model1_curve@y.values[[1]])),
     exp(model2a_fitted$.lower - log(model2a_data$scale_factor)),
     exp(model2b_fitted$.lower),
-    exp(model2c_fitted$.lower)
+    exp(model2c_fitted$.lower),
+    exp(model3a_fitted$.lower),
+    exp(model3b_fitted$.lower),
+    exp(model3c_fitted$.lower)
   ),
   upper = c(
     rep(NA, length(model1_curve@y.values[[1]])),
     exp(model2a_fitted$.upper - log(model2a_data$scale_factor)),
     exp(model2b_fitted$.upper),
-    exp(model2c_fitted$.upper)
+    exp(model2c_fitted$.upper),
+    exp(model3a_fitted$.upper),
+    exp(model3b_fitted$.upper),
+    exp(model3c_fitted$.upper)
   ),
   observed = c(
     model1_curve@x.values[[1]],
     unlist(paired_cpue),
     unlist(paired_richness),
-    model2c_data$y
+    model2c_data$y,
+    model3a_data$y,
+    model3b_data$y,
+    model3c_data$y
   )
 )
 
@@ -820,18 +1091,14 @@ fitted_plot <- fitted_values %>%
   mutate(
     model = gsub("draws_", "", model),
     model = gsub("model", "Model ", model),
-    model = gsub("Model 2", "Model 2b", model),
-    model = gsub("Model 3", "Model 2c", model),
-    model = gsub("Model 1a", "Model 2a", model),
-    model = gsub("Model 0", "Model 1", model),
     upper = ifelse(upper > 10 * fitted, 10 * fitted, upper)
   ) %>%
   ggplot() +
   geom_point(aes(y = fitted, x = observed)) +
   geom_errorbar(aes(ymin = lower, ymax = upper, x = observed)) +
   facet_wrap( ~ model, scales = "free") +
-  xlab("False positive rate (Model 1) or observed value (Models 2a, 2b, or 2c)") +
-  ylab("True positive rate (Model 1) or fitted value (Models 2a, 2b, or 2c)") +
+  xlab("False positive rate (Model 1) or observed value (Models 2 and 3)") +
+  ylab("True positive rate (Model 1) or fitted value (Models 2 and 3)") +
   theme(axis.title = element_text(size = 8))
 
 # save to file
@@ -850,11 +1117,14 @@ fit_stats <- c(
   model1_auc,
   cor(exp(model2a_fitted$.value - log(model2a_data$scale_factor)), c(unlist(paired_cpue))),
   cor(exp(model2b_fitted$.value), unlist(paired_richness)),
-  cor(exp(model2c_fitted$.value), model2c_data$y)
+  cor(exp(model2c_fitted$.value), model2c_data$y),
+  cor(exp(model3a_fitted$.value), model3a_data$y),
+  cor(exp(model3b_fitted$.value), model3b_data$y),
+  cor(exp(model3c_fitted$.value), model3c_data$y)
 )
 fit_stats <- data.frame(
   model = model_names,
-  statistic = c("AUC", rep("r", 3)),
+  statistic = c("AUC", rep("r", 6)),
   values = fit_stats
 )
 fit_stats <- fit_stats %>%
@@ -870,14 +1140,20 @@ model2b_pp <- pp_check(draws_model2b, model2b_data$yflat, breaks = seq(-0.5, 225
   ggtitle("Model 2b")
 model2c_pp <- pp_check(draws_model2c, model2c_data$y, breaks = seq(-0.5, 285, by = 1), xlim = c(-0.5, 280)) + 
   ggtitle("Model 2c")
+model3a_pp <- pp_check(draws_model3a, model3a_data$y, breaks = seq(0, 1, by = 0.01), xlim = c(0, 1)) + 
+  ggtitle("Model 3a")
+model3b_pp <- pp_check(draws_model3b, model3b_data$y, breaks = seq(0, 1, by = 0.01), xlim = c(0, 1)) + 
+  ggtitle("Model 3b")
+model3c_pp <- pp_check(draws_model3c, model3c_data$y, breaks = seq(0, 2, by = 0.02), xlim = c(0, 2)) + 
+  ggtitle("Model 3c")
 
 # save pp check plot to file
 ggsave(
-  (model1_pp / model2b_pp) | (model2a_pp / model2c_pp),
+  (model1_pp / model2b_pp / model3a_pp / model3c_pp) | (model2a_pp / model2c_pp / model3b_pp / plot_spacer()),
   filename = "outputs/figures/FigS3.png",
   device = png,
   width = 7,
-  height = 5,
+  height = 8,
   units = "in", 
   dpi = 600
 )
@@ -1043,17 +1319,152 @@ ppm_model2c <- draws_model2c %>%
   ) %>%
   arrange(Model, Predictor, Species)
 
+# Model 3a
+ppm_model3a_theta <- draws_model3a %>%
+  spread_draws(theta) %>%
+  mutate(
+    theta_gtzero = ifelse(theta > 0, 1, 0)
+  ) %>%
+  summarise(ad_effect_pp = mean(theta_gtzero)) %>%
+  mutate(
+    posterior_odds_ad_effect = ad_effect_pp / (1 - ad_effect_pp),
+    Model = "Model 3a"
+  ) %>%
+  select(Model, ad_effect_pp, posterior_odds_ad_effect)
+ppm_model3a <- draws_model3a %>% 
+  spread_draws(
+    beta[predictor],
+    delta[predictor]
+  ) %>%
+  mutate(
+    predictor = rownames(model2a_data$X)[predictor],
+    Predictor = predictor_names[predictor]
+  ) %>%
+  mutate(
+    delta = beta + delta,
+    beta_gtzero = ifelse(beta > 0, 1, 0),
+    delta_gtzero = ifelse(delta > 0, 1, 0)
+  ) %>%
+  group_by(Predictor) %>%
+  summarise(
+    beta_ad_absent_pp = mean(beta_gtzero),
+    beta_ad_present_pp = mean(delta_gtzero)
+  ) %>%
+  mutate(
+    posterior_odds_ad_absent = beta_ad_absent_pp / (1 - beta_ad_absent_pp),
+    posterior_odds_ad_present = beta_ad_present_pp / (1 - beta_ad_present_pp),
+    Model = "Model 3a"
+  ) %>%
+  select(
+    Model, Predictor,
+    beta_ad_absent_pp, posterior_odds_ad_absent,
+    beta_ad_present_pp, posterior_odds_ad_present
+  ) %>%
+  arrange(Model, Predictor)
+
+# Model 3b
+ppm_model3b_theta <- draws_model3b %>%
+  spread_draws(theta) %>%
+  mutate(
+    theta_gtzero = ifelse(theta > 0, 1, 0)
+  ) %>%
+  summarise(ad_effect_pp = mean(theta_gtzero)) %>%
+  mutate(
+    posterior_odds_ad_effect = ad_effect_pp / (1 - ad_effect_pp),
+    Model = "Model 3b"
+  ) %>%
+  select(Model, ad_effect_pp, posterior_odds_ad_effect)
+ppm_model3b <- draws_model3b %>% 
+  spread_draws(
+    beta[predictor],
+    delta[predictor]
+  ) %>%
+  mutate(
+    predictor = rownames(model2a_data$X)[predictor],
+    Predictor = predictor_names[predictor]
+  ) %>%
+  mutate(
+    delta = beta + delta,
+    beta_gtzero = ifelse(beta > 0, 1, 0),
+    delta_gtzero = ifelse(delta > 0, 1, 0)
+  ) %>%
+  group_by(Predictor) %>%
+  summarise(
+    beta_ad_absent_pp = mean(beta_gtzero),
+    beta_ad_present_pp = mean(delta_gtzero)
+  ) %>%
+  mutate(
+    posterior_odds_ad_absent = beta_ad_absent_pp / (1 - beta_ad_absent_pp),
+    posterior_odds_ad_present = beta_ad_present_pp / (1 - beta_ad_present_pp),
+    Model = "Model 3b"
+  ) %>%
+  select(
+    Model, Predictor,
+    beta_ad_absent_pp, posterior_odds_ad_absent,
+    beta_ad_present_pp, posterior_odds_ad_present
+  ) %>%
+  arrange(Model, Predictor)
+
+# Model 3c
+ppm_model3c_theta <- draws_model3c %>%
+  spread_draws(theta) %>%
+  mutate(
+    theta_gtzero = ifelse(theta > 0, 1, 0)
+  ) %>%
+  summarise(ad_effect_pp = mean(theta_gtzero)) %>%
+  mutate(
+    posterior_odds_ad_effect = ad_effect_pp / (1 - ad_effect_pp),
+    Model = "Model 3c"
+  ) %>%
+  select(Model, ad_effect_pp, posterior_odds_ad_effect)
+ppm_model3c <- draws_model3c %>% 
+  spread_draws(
+    beta[predictor],
+    delta[predictor]
+  ) %>%
+  mutate(
+    predictor = rownames(model2a_data$X)[predictor],
+    Predictor = predictor_names[predictor]
+  ) %>%
+  mutate(
+    delta = beta + delta,
+    beta_gtzero = ifelse(beta > 0, 1, 0),
+    delta_gtzero = ifelse(delta > 0, 1, 0)
+  ) %>%
+  group_by(Predictor) %>%
+  summarise(
+    beta_ad_absent_pp = mean(beta_gtzero),
+    beta_ad_present_pp = mean(delta_gtzero)
+  ) %>%
+  mutate(
+    posterior_odds_ad_absent = beta_ad_absent_pp / (1 - beta_ad_absent_pp),
+    posterior_odds_ad_present = beta_ad_present_pp / (1 - beta_ad_present_pp),
+    Model = "Model 3c"
+  ) %>%
+  select(
+    Model, Predictor,
+    beta_ad_absent_pp, posterior_odds_ad_absent,
+    beta_ad_present_pp, posterior_odds_ad_present
+  ) %>%
+  arrange(Model, Predictor)
+
 # combine these and write to table
 write.csv(ppm_model1, file = "outputs/tables/TableS1.csv")
 ppm_theta <- bind_rows(
   ppm_model2a_theta,
   ppm_model2b_theta,
-  ppm_model2c_theta
+  ppm_model2c_theta,
+  ppm_model3a_theta,
+  ppm_model3b_theta,
+  ppm_model3c_theta
 )
 write.csv(ppm_theta, file = "outputs/tables/TableS2.csv")
 ppm_beta <- bind_rows(
   ppm_model2a,
   ppm_model2b,
-  ppm_model2c
+  ppm_model2c,
+  ppm_model3a,
+  ppm_model3b,
+  ppm_model3c
 )
 write.csv(ppm_beta, file = "outputs/tables/TableS3.csv")
