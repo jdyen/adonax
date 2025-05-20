@@ -4,7 +4,7 @@
 # Authors: Alberto Maceda Veiga, Ralph Mac Nally, Jian Yen
 # Analysis: Jian Yen
 #
-# last updated: 28 September 2023
+# last updated: 9 May 2025
 
 # load packages
 library(qs)
@@ -38,13 +38,13 @@ guilds <- read_xlsx(
 )
 
 # rename one species that has an updated name
-guilds <- guilds %>%
+guilds <- guilds |>
   mutate(species = gsub("LUGR", "BAGR", species))
 
 # remove second (incorrect) ebro basin classifications
 #   and rename other one
-spp_info <- spp_info %>% 
-  select(-Ebro...14) %>% 
+spp_info <- spp_info |> 
+  select(-Ebro...14) |> 
   rename(Ebro = Ebro...8)
 
 # load fish cpue data
@@ -54,7 +54,7 @@ cpue <- read_xlsx(
 )
 
 # rename some predictors to avoid naming issues
-cpue <- cpue %>%
+cpue <- cpue |>
   rename(
     ammonia_no2 = `[NH3+NO2]`,
     nitrate_phosphate = `[NO3+PO4]`,
@@ -63,7 +63,7 @@ cpue <- cpue %>%
   )
 
 # and remove NA values
-cpue <- cpue %>% filter(!apply(cpue, 1, anyNA))
+cpue <- cpue |> filter(!apply(cpue, 1, anyNA))
 
 # and load fish individual SMI data
 smi <- read_xlsx(
@@ -78,7 +78,7 @@ paired_sites <- read_xlsx("data/BD_Arundo.xlsx")
 fd <- read_xlsx("data/Functional diversity indices.xlsx")
 
 # prepare data for model 0.1 and model 0.2
-model1_predictors <- cpue %>%
+model1_predictors <- cpue |>
   select(
     Stream_order, Elevation, Water_temperature,
     Water_depth, Water_velocity, Conductivity,
@@ -88,20 +88,20 @@ model1_predictors <- cpue %>%
 model1_data <- list(
   N = nrow(cpue),
   K = ncol(model1_predictors),
-  y = cpue %>% pull(Arundo),
+  y = cpue |> pull(Arundo),
   X = scale(model1_predictors),
-  basin = cpue %>% pull(Basin) %>% rebase_factor(),
+  basin = cpue |> pull(Basin) |> rebase_factor(),
   sigma_fixed = 5.,
   sigma_random = 2.
 )
 model1_data$nbasin <- max(model1_data$basin)
 
 # filter data to paired sites
-paired_fish <- paired_sites %>%
-  left_join(cpue %>% select(-Arundo), by = c("CODE1", "CODE2"))
+paired_fish <- paired_sites |>
+  left_join(cpue |> select(-Arundo), by = c("CODE1", "CODE2"))
 
 # extract CPUE info for model 1
-paired_cpue <- paired_fish %>%
+paired_cpue <- paired_fish |>
   select(
     ACAR, ALAL, AMME, ANAN, BAQU, BAGR, BAHA, BAME,
     CAAU, COCA, COPA, CYCA, ESLU, GAHO, GOLO, LEGI,
@@ -110,17 +110,17 @@ paired_cpue <- paired_fish %>%
   )
 
 # drop species that are never observed
-paired_cpue <- paired_cpue %>% select(which(colSums(paired_cpue) > 0))
+paired_cpue <- paired_cpue |> select(which(colSums(paired_cpue) > 0))
 
 # attach guild info to species-level CPUE measurements
-cpue_guild <- paired_cpue %>%
-  pivot_longer(cols = everything(), names_to = "species") %>%
-  mutate(id = rep(seq_len(nrow(paired_cpue)), each = ncol(paired_cpue))) %>%
+cpue_guild <- paired_cpue |>
+  pivot_longer(cols = everything(), names_to = "species") |>
+  mutate(id = rep(seq_len(nrow(paired_cpue)), each = ncol(paired_cpue))) |>
   left_join(guilds, by = "species")
 
 # extract origin info for guild groupings
-origin_info <- spp_info %>% 
-  select(-Order, -Family, -Genus, -`TROPHIC LEVEL`) %>%
+origin_info <- spp_info |> 
+  select(-Order, -Family, -Genus, -`TROPHIC LEVEL`) |>
   pivot_longer(
     cols = c(
       Besos, Daro, Ebro, Fluvia, Francoli, Foix, Gaia,
@@ -132,7 +132,7 @@ origin_info <- spp_info %>%
   )
 
 # and predictor variables
-paired_predictors <- paired_fish %>%
+paired_predictors <- paired_fish |>
   select(
     Stream_order, Elevation, Water_temperature,
     Water_depth, Water_velocity, Conductivity, pH, 
@@ -141,14 +141,14 @@ paired_predictors <- paired_fish %>%
   )
 
 # reformat origin info for species model
-origin_matrix <- origin_info %>%
+origin_matrix <- origin_info |>
   filter(
     SPECIES %in% colnames(paired_cpue),
     Basin %in% unique(paired_fish$Basin)
-  ) %>%
-  mutate(origin_level = rebase_factor(Origin)) %>%
-  select(-Origin) %>%
-  pivot_wider(id_cols = SPECIES, names_from = Basin, values_from = origin_level) %>%
+  ) |>
+  mutate(origin_level = rebase_factor(Origin)) |>
+  select(-Origin) |>
+  pivot_wider(id_cols = SPECIES, names_from = Basin, values_from = origin_level) |>
   select(-SPECIES)
 
 # dump this all together in a list for all species and for each guild
@@ -157,11 +157,11 @@ model2a_data <- list(
   Q = ncol(paired_cpue),
   K = ncol(paired_predictors),
   X = t(scale(paired_predictors)),
-  arundo = paired_fish %>% pull(Arundo),
+  arundo = paired_fish |> pull(Arundo),
   origin = origin_matrix,
-  basin = paired_fish %>% pull(Basin) %>% rebase_factor(),
-  block_id = paired_fish %>% pull(BLOCK) %>% rebase_factor(),
-  site = paired_fish %>% pull(CODE1) %>% rebase_factor(),
+  basin = paired_fish |> pull(Basin) |> rebase_factor(),
+  block_id = paired_fish |> pull(BLOCK) |> rebase_factor(),
+  site = paired_fish |> pull(CODE1) |> rebase_factor(),
   scale_factor = 10.,
   sigma_fixed = 5.,
   sigma_covar = 2.,
@@ -187,11 +187,11 @@ channel_cons_check <- data.frame(
   x = rep(paired_predictors$Channel_conservation, each = ncol(paired_cpue)),
   arundo = rep(model2a_data$arundo, each = ncol(paired_cpue))
 )
-p <- channel_cons_check %>%
+p <- channel_cons_check |>
   mutate(
     arundo = factor(arundo, levels = c("0", "1"), labels = c("Absent", "Present")),
     y = y + 1
-  ) %>%
+  ) |>
   ggplot(aes(y = y, x = x, col = arundo)) +
   geom_point() +
   scale_y_log10() +
@@ -207,13 +207,13 @@ ggsave(
 )
 
 # grab summary stats for model 2
-paired_richness <- paired_fish %>%
+paired_richness <- paired_fish |>
   select(contains("Sp_Rich_"))
 
 # and calculate abundance-weighted trophic level for model 2
-wtl <- paired_cpue %>% 
-  sweep(1, rowSums(paired_cpue), "/") %>% 
-  sweep(2, spp_info$`TROPHIC LEVEL`[match(colnames(paired_cpue), spp_info$SPECIES)], "*") %>%
+wtl <- paired_cpue |> 
+  sweep(1, rowSums(paired_cpue), "/") |> 
+  sweep(2, spp_info$`TROPHIC LEVEL`[match(colnames(paired_cpue), spp_info$SPECIES)], "*") |>
   apply(1, sum)
 wtl[is.na(wtl)] <- median(wtl, na.rm = TRUE)
 
@@ -223,10 +223,10 @@ model2b_data <- list(
   Q = ncol(paired_richness),
   K = ncol(paired_predictors),
   X = t(scale(paired_predictors)),
-  arundo = paired_fish %>% pull(Arundo),
-  basin = paired_fish %>% pull(Basin) %>% rebase_factor(),
-  block_id = paired_fish %>% pull(BLOCK) %>% rebase_factor(),
-  site = paired_fish %>% pull(CODE1) %>% rebase_factor(),
+  arundo = paired_fish |> pull(Arundo),
+  basin = paired_fish |> pull(Basin) |> rebase_factor(),
+  block_id = paired_fish |> pull(BLOCK) |> rebase_factor(),
+  site = paired_fish |> pull(CODE1) |> rebase_factor(),
   sigma_fixed = 5.,
   sigma_covar = 2.,
   sigma_resid = 2.,
@@ -244,8 +244,8 @@ model2b_data$yflat <- c(t(paired_richness))
 model2b_data$nflat <- length(model2b_data$yflat)
 
 # and moving onto data for model 3 (individual sizes)
-smi_spp_info <- spp_info %>% 
-  rename(trophic_level = `TROPHIC LEVEL`) %>%
+smi_spp_info <- spp_info |> 
+  rename(trophic_level = `TROPHIC LEVEL`) |>
   pivot_longer(
     cols = c(
       Besos, Daro, Ebro, Fluvia, Francoli, Foix, Gaia,
@@ -255,11 +255,11 @@ smi_spp_info <- spp_info %>%
     names_to = "Basin",
     values_to = "Origin"
   )
-smi_full <- smi %>%
-  filter(as.character(CODE1) %in% as.character(paired_sites$CODE1)) %>%
-  left_join(paired_sites %>% select(CODE1, BLOCK, Arundo), by = "CODE1") %>%
+smi_full <- smi |>
+  filter(as.character(CODE1) %in% as.character(paired_sites$CODE1)) |>
+  left_join(paired_sites |> select(CODE1, BLOCK, Arundo), by = "CODE1") |>
   left_join(
-    cpue %>% 
+    cpue |> 
       select(
         CODE1, Basin, Stream_order, Elevation, Water_temperature,
         Water_depth, Water_velocity, Conductivity, pH, 
@@ -267,13 +267,13 @@ smi_full <- smi %>%
         Habitat_diversity
       ),
     by = "CODE1"
-  ) %>%
+  ) |>
   left_join(smi_spp_info, by = c("SPECIES", "Basin"))
-smi_full <- smi_full %>%
+smi_full <- smi_full |>
   filter(!apply(smi_full, 1, anyNA))
 
 # extract predictor variables
-smi_predictors <- smi_full %>%
+smi_predictors <- smi_full |>
   select(
     Stream_order, Elevation, Water_temperature,
     Water_depth, Water_velocity, Conductivity, pH, 
@@ -285,17 +285,17 @@ smi_predictors <- smi_full %>%
 model2c_data <- list(
   N = nrow(smi_full),
   K = ncol(smi_predictors),
-  y = smi_full %>% pull(SMI),
+  y = smi_full |> pull(SMI),
   X = scale(smi_predictors),
-  arundo = smi_full %>% pull(Arundo),
-  origin = smi_full %>% select(SPECIES, Basin) %>% left_join(smi_spp_info, by = c("SPECIES", "Basin")) %>% select(Origin) %>% unlist() %>% rebase_factor(),
-  basin = smi_full %>% pull(Basin) %>% rebase_factor(),
-  site = smi_full %>% pull(CODE1) %>% rebase_factor(),
-  block_id = smi_full %>% pull(BLOCK) %>% rebase_factor(),
-  species = smi_full %>% pull(SPECIES) %>% rebase_factor(),
-  order = smi_full %>% pull(Order) %>% rebase_factor(),
-  family = smi_full %>% pull(Family) %>% rebase_factor(),
-  genus = smi_full %>% pull(Genus) %>% rebase_factor(),
+  arundo = smi_full |> pull(Arundo),
+  origin = smi_full |> select(SPECIES, Basin) |> left_join(smi_spp_info, by = c("SPECIES", "Basin")) |> select(Origin) |> unlist() |> rebase_factor(),
+  basin = smi_full |> pull(Basin) |> rebase_factor(),
+  site = smi_full |> pull(CODE1) |> rebase_factor(),
+  block_id = smi_full |> pull(BLOCK) |> rebase_factor(),
+  species = smi_full |> pull(SPECIES) |> rebase_factor(),
+  order = smi_full |> pull(Order) |> rebase_factor(),
+  family = smi_full |> pull(Family) |> rebase_factor(),
+  genus = smi_full |> pull(Genus) |> rebase_factor(),
   sigma_fixed = 5.,
   sigma_random = 2.
 )
@@ -312,7 +312,7 @@ model2c_data$Q <- max(model2c_data$species)
 
 # prepare data for model 3 (functional diversity indices)
 # filter data to paired sites
-paired_fd <- paired_sites %>%
+paired_fd <- paired_sites |>
   left_join(fd, by = c("CODE1")) |>
   left_join(cpue |> select(CODE1, Basin), by = "CODE1")
 
@@ -347,10 +347,10 @@ model3_data <- list(
   Q = ncol(paired_fd |> select(FSpe, FOri, FEnt)),
   K = ncol(paired_fd_predictors),
   X = t(scale(paired_fd_predictors)),
-  arundo = paired_fd %>% pull(Arundo),
-  basin = paired_fd %>% pull(Basin) %>% rebase_factor(),
-  block_id = paired_fd %>% pull(BLOCK) %>% rebase_factor(),
-  site = paired_fd %>% pull(CODE1) %>% rebase_factor(),
+  arundo = paired_fd |> pull(Arundo),
+  basin = paired_fd |> pull(Basin) |> rebase_factor(),
+  block_id = paired_fd |> pull(BLOCK) |> rebase_factor(),
+  site = paired_fd |> pull(CODE1) |> rebase_factor(),
   sigma_fixed = 5.,
   sigma_covar = 2.,
   sigma_resid = 2.,
@@ -369,10 +369,10 @@ model3a_data <- list(
   Q = ncol(paired_fd |> select(FSpe, FOri, FEnt)),
   K = ncol(paired_fd_predictors),
   X = scale(paired_fd_predictors),
-  arundo = paired_fd %>% pull(Arundo),
-  basin = paired_fd %>% pull(Basin) %>% rebase_factor(),
-  block_id = paired_fd %>% pull(BLOCK) %>% rebase_factor(),
-  site = paired_fd %>% pull(CODE1) %>% rebase_factor(),
+  arundo = paired_fd |> pull(Arundo),
+  basin = paired_fd |> pull(Basin) |> rebase_factor(),
+  block_id = paired_fd |> pull(BLOCK) |> rebase_factor(),
+  site = paired_fd |> pull(CODE1) |> rebase_factor(),
   sigma_fixed = 5.,
   sigma_random = 2.
 )
@@ -428,7 +428,7 @@ if (refit_models) {
   
   # free up some space
   rm(draws_model1)
-
+  
   # Fit model 1a: model of fish CPUE, how does A. donax affect fish species?
   # compile model
   model2a_stan <- stan_model("src/nb-simple.stan")
@@ -455,7 +455,7 @@ if (refit_models) {
   # sample from model for species richness by classification (native or otherwise)
   # compile model
   model2b_stan <- stan_model("src/nb-simple-no-origin.stan")
-
+  
   # sample from model
   draws_model2b <- sampling(
     model2b_stan,
@@ -519,7 +519,7 @@ if (refit_models) {
   
   # free up some space
   rm(draws_model3a)
-
+  
   # sample from model
   draws_model3b <- sampling(
     model3_stan,
@@ -538,7 +538,7 @@ if (refit_models) {
   
   # free up some space
   rm(draws_model3b)
-
+  
   # sample from model
   draws_model3c <- sampling(
     model3_stan,
@@ -562,32 +562,32 @@ if (refit_models) {
 
 # calculate sample sizes with and without A. donax for models 2a and 2c
 #    (species-level analyses)
-model2a_sample_size <- paired_cpue %>% 
-  group_by(paired_fish %>% pull(Arundo)) %>%
+model2a_sample_size <- paired_cpue |> 
+  group_by(paired_fish |> pull(Arundo)) |>
   summarise_all(~sum(.x > 0))
 model2a_sample_size <- tibble(
   GROUP = colnames(model2a_sample_size)[-1],
   with_adonax = unlist(model2a_sample_size[2, -1]),
   without_adonax = unlist(model2a_sample_size[1, -1])
 )
-model2b_sample_size <- paired_richness %>% 
-  group_by(paired_fish %>% pull(Arundo)) %>%
+model2b_sample_size <- paired_richness |> 
+  group_by(paired_fish |> pull(Arundo)) |>
   summarise_all(~sum(.x > 0))
 model2b_sample_size <- tibble(
   GROUP = colnames(model2b_sample_size)[-1],
   with_adonax = unlist(model2b_sample_size[2, -1]),
   without_adonax = unlist(model2b_sample_size[1, -1])
 )
-model2c_sample_size <- smi_full %>% 
-  group_by(SPECIES, Arundo) %>%
-  summarise(count = n()) %>%
-  mutate(Arundo = ifelse(Arundo == 0, "without_adonax", "with_adonax")) %>%
+model2c_sample_size <- smi_full |> 
+  group_by(SPECIES, Arundo) |>
+  summarise(count = n()) |>
+  mutate(Arundo = ifelse(Arundo == 0, "without_adonax", "with_adonax")) |>
   pivot_wider(
     id_cols = SPECIES,
     names_from = Arundo, 
     values_from = count
-  ) %>%
-  mutate(without_adonax = ifelse(is.na(without_adonax), 0, without_adonax)) %>%
+  ) |>
+  mutate(without_adonax = ifelse(is.na(without_adonax), 0, without_adonax)) |>
   rename(GROUP = SPECIES)
 sample_sizes <- rbind(
   c(GROUP = "Model 2a", with_adonax = "", without_adonax = ""),
@@ -644,28 +644,33 @@ diagnostics <- data.frame(
   Rhat = do.call(c, lapply(diagnostics, function(x) x[, "Rhat"])),
   n_eff = do.call(c, lapply(diagnostics, function(x) x[, "n_eff"]))
 )
-diagnostic_plot <- diagnostics %>%
-  filter(!grepl("_term\\[", par)) %>%
+diagnostic_plot <- diagnostics |>
+  filter(!grepl("_term\\[", par)) |>
   pivot_longer(
     cols = c(Rhat, n_eff),
     names_to = "statistic"
-  ) %>%
+  ) |>
   mutate(
     model = gsub("draws_", "", model),
     model = gsub("model", "Model ", model),
     statistic = gsub("n_eff", "Effective sample size", statistic)
-  ) %>%
+  ) |>
   ggplot() +
   geom_histogram(aes(x = value), bins = 50) +
   xlab("Value") +
   ylab("Count") +
-  facet_grid(model ~ statistic, scales = "free")
+  facet_grid(model ~ statistic, scales = "free") +
+  theme(
+    panel.background = element_rect(fill = "white"),
+    axis.text = element_text(size = 10),
+    axis.title = element_text(size = 12)
+  )
 ggsave(
   diagnostic_plot,
-  filename = "outputs/figures/FigS1.png",
+  filename = "outputs/figures/Fig-diagnostics.png",
   device = png,
-  width = 5,
-  height = 8,
+  width = 6,
+  height = 6.5,
   units = "in", 
   dpi = 600
 )
@@ -686,22 +691,27 @@ predictor_names <- c(
 )
 
 # extract parameters from model 0.a: Bayesian logistic regression, where does A. donax occur?
-model1_effects <- draws_model1 %>% 
+model1_effects <- draws_model1 |> 
   spread_draws(
     beta[Predictor],
-  ) %>% 
+  ) |> 
   median_qi(
     .width = c(0.95, 0.66)
-  ) %>%
+  ) |>
   mutate(
     Predictor = colnames(model1_data$X)[Predictor],
     Predictor = predictor_names[Predictor]
   )
-model1_beta <- model1_effects %>%
+model1_beta <- model1_effects |>
   ggplot(aes(y = Predictor, x = beta, xmin = .lower, xmax = .upper)) +
   geom_pointinterval() +
   geom_vline(xintercept = 0, linetype = "dashed") +
-  xlab("Parameter estimate")
+  xlab("Parameter estimate") +
+  theme(
+    panel.background = element_rect(fill = "white"),
+    axis.text = element_text(size = 10),
+    axis.title = element_text(size = 12)
+  )
 ggsave(
   model1_beta,
   filename = "outputs/figures/Fig2.png",
@@ -712,115 +722,241 @@ ggsave(
   dpi = 600
 )
 
+# set a subset of species for plotting in main text (all with > 10% occupancy)
+species_subset <- c(
+  "CYCA", "BAGR", "ANAN", "SQLA", "BAME", "BAHA", 
+  "ALAL", "PHBI", "GOLO", "LEGI", "PAMY", "SATR"
+)
+
+# list of names to replace
+species_replace <- c(
+  "PHBI" = "PHSP",
+  "GOLO" = "GOSP",
+  "BAGR" = "LUGR"
+)
+
+# update species subset
+idx <- species_subset %in% names(species_replace)
+species_subset[idx] <- species_replace[species_subset[idx]]
+
 # extract and plot parameters from model 1a: model of fish CPUE, how does
 #    A. donax affect fish species?
-model2a_effects <- draws_model2a %>% 
+model2a_effects <- draws_model2a |> 
   spread_draws(
+    alpha[species],
     theta[species],
     beta[species, predictor],
     delta[species, predictor]
-  ) %>% 
+  ) |> 
   median_qi(
-    theta, beta, delta = beta + delta,
+    alpha, theta, beta, delta = beta + delta,
     .width = c(0.95, 0.66)
-  ) %>%
+  ) |>
   mutate(
     Species = colnames(paired_cpue)[species],
+    Species = ifelse(
+      Species %in% names(species_replace),
+      species_replace[Species],
+      Species
+    ),
     predictor = rownames(model2a_data$X)[predictor],
     Predictor = predictor_names[predictor]
   )
-model2a_theta <- model2a_effects %>%
-  select(contains("theta"), Species, .width, .point, .interval) %>%
+
+# set up the predictor matrix so we can 
+#   plot predicted effects (holding intercept, Ad effects, and delta at their
+#   mean values but including uncertainty in beta)
+x_vals <- tibble(
+  term = rownames(model2a_data$X),
+  min = model2a_data$X |> 
+    t() |>
+    apply(2, quantile, probs = 0.01),
+  max = model2a_data$X |> 
+    t() |>
+    apply(2, quantile, probs = 0.99)
+)
+x_vals <- x_vals |>
+  rowwise() |>
+  reframe(
+    term = term,
+    x = seq(min, max, length = 100)
+  )
+x_vals <- bind_rows(
+  x_vals |> mutate(arundo = 1),
+  x_vals |> mutate(arundo= 0)
+)
+x_rescale <- tibble(
+  predictor = attributes(model2a_data$X)$dimnames[[1]],
+  center = attributes(model2a_data$X)$`scaled:center`,
+  scale = attributes(model2a_data$X)$`scaled:scale`
+)
+
+# set a consistent order of predictors for plots
+pred_order <- c(
+  "Stream order", 
+  "Channel conservation",
+  "Habitat diversity", 
+  "Water velocity",
+  "[NH3+NO2]", 
+  "Conductivity"
+)
+
+# save to file
+model2a_theta <- model2a_effects |>
+  select(contains("theta"), Species, .width, .point, .interval) |>
   ggplot(aes(y = Species, x = theta, xmin = theta.lower, xmax = theta.upper)) +
   geom_pointinterval() +
   geom_vline(xintercept = 0, linetype = "dashed") +
   scale_color_brewer(type = "qual", palette = "Set2") +
-  theme(legend.position = "none") +
+  theme(
+    legend.position = "bottom",
+    panel.background = element_rect(fill = "white"),
+    axis.text = element_text(size = 10),
+    axis.title = element_text(size = 12)
+  ) +
   xlab("Parameter estimate")
-model2a_beta <- model2a_effects %>%
-  select(contains("beta"), contains("delta"), Species, Predictor, .width, .point, .interval) %>%
-  pivot_longer(cols = c(contains("beta"), contains("delta"))) %>%
+model2a_beta <- model2a_effects |>
+  select(contains("beta"), contains("delta"), Species, Predictor, .width, .point, .interval) |>
+  pivot_longer(cols = c(contains("beta"), contains("delta"))) |>
+  filter(!Predictor %in% pred_order) |>
   mutate(
     level = "mid",
     level = ifelse(grepl("lower", name), "lower", level),
     level = ifelse(grepl("upper", name), "upper", level),
     name = gsub("\\.lower|\\.upper", "", name)
-  ) %>%
+  ) |>
   pivot_wider(
-    id_cols = c(species, Species, Predictor, .width, .point, .interval, name),
+    id_cols = c(Species, Predictor, .width, .point, .interval, name),
     names_from = level,
     values_from = value
-  ) %>%
+  ) |>
   ggplot(aes(y = Species, x = mid, xmin = lower, xmax = upper, col = name), position = position_dodge(0.4)) +
   geom_pointinterval(position = position_dodge(0.4)) +
   geom_vline(xintercept = 0, linetype = "dashed") +
-  facet_wrap( ~ Predictor, ncol = 4, scales = "free_x") +
-  scale_color_brewer(type = "qual", palette = "Set2", labels = c("A. donax absent", "A. donax present")) +
+  facet_wrap( ~ Predictor, ncol = 3, scales = "free_x") +
+  scale_color_brewer(type = "qual", name = "", palette = "Set2", labels = c("A. donax absent", "A. donax present")) +
   xlab("Parameter estimate") +
-  theme(legend.position = "bottom")
+  theme(
+    legend.position = "bottom",
+    panel.background = element_rect(fill = "white"),
+    axis.text = element_text(size = 10),
+    axis.title = element_text(size = 12)
+  )
+model2a_beta_reduced <- model2a_effects |>
+  select(contains("beta"), contains("delta"), Species, Predictor, .width, .point, .interval) |>
+  pivot_longer(cols = c(contains("beta"), contains("delta"))) |>
+  mutate(
+    level = "mid",
+    level = ifelse(grepl("lower", name), "lower", level),
+    level = ifelse(grepl("upper", name), "upper", level),
+    name = gsub("\\.lower|\\.upper", "", name)
+  ) |>
+  filter(
+    Predictor %in% pred_order,
+    Species %in% species_subset
+  ) |>
+  mutate(Predictor = factor(Predictor, levels = pred_order)) |>
+  pivot_wider(
+    id_cols = c(Species, Predictor, .width, .point, .interval, name),
+    names_from = level,
+    values_from = value
+  ) |>
+  ggplot(aes(y = Species, x = mid, xmin = lower, xmax = upper, col = name), position = position_dodge(0.4)) +
+  geom_pointinterval(position = position_dodge(0.4)) +
+  geom_vline(xintercept = 0, linetype = "dashed") +
+  facet_wrap( ~ Predictor, ncol = 3, scales = "free_x") +
+  scale_color_brewer(type = "qual", name = "", palette = "Set2", labels = c("A. donax absent", "A. donax present")) +
+  xlab("Parameter estimate") +
+  theme(
+    legend.position = "bottom",
+    panel.background = element_rect(fill = "white"),
+    axis.text = element_text(size = 10),
+    axis.title = element_text(size = 12)
+  )
 
 # save to file
 ggsave(
   model2a_beta,
-  filename = "outputs/figures/Fig4.png",
+  filename = "outputs/figures/FigS3.png",
   device = png,
-  width = 9,
+  width = 8,
   height = 12,
+  units = "in",
+  dpi = 600
+)
+ggsave(
+  model2a_beta_reduced,
+  filename = "outputs/figures/Fig6.png",
+  device = png,
+  width = 7,
+  height = 8,
   units = "in",
   dpi = 600
 )
 
 # extract effects from model 2: how does A. donax affect species richness?
 origin_list <- c("Exotic", "Native", "Translocated")
-model2b_effects <- draws_model2b %>% 
+model2b_effects <- draws_model2b |> 
   spread_draws(
+    alpha[origin],
     theta[origin],
     beta[origin, predictor],
     delta[origin, predictor]
-  ) %>% 
+  ) |> 
   median_qi(
-    theta, beta, delta = beta + delta,
+    alpha, theta, beta, delta = beta + delta,
     .width = c(0.95, 0.66)
-  ) %>%
+  ) |>
   mutate(
     Origin = origin_list[origin],
     predictor = rownames(model2b_data$X)[predictor],
     Predictor = predictor_names[predictor]
   )
-model2b_theta <- model2b_effects %>%
-  select(contains("theta"), Origin, .width, .point, .interval) %>%
+model2b_theta <- model2b_effects |>
+  select(contains("theta"), Origin, .width, .point, .interval) |>
   ggplot(aes(y = Origin, x = theta, xmin = theta.lower, xmax = theta.upper)) +
   geom_pointinterval() +
   geom_vline(xintercept = 0, linetype = "dashed") +
   scale_color_brewer(type = "qual", palette = "Set2") +
-  theme(legend.position = "none") +
-  xlab("Parameter estimate")
-model2b_beta <- model2b_effects %>%
-  select(contains("beta"), contains("delta"), Origin, Predictor, .width, .point, .interval) %>%
-  pivot_longer(cols = c(contains("beta"), contains("delta"))) %>%
+  xlab("Parameter estimate") +
+  theme(
+    legend.position = "none",
+    panel.background = element_rect(fill = "white"),
+    axis.text = element_text(size = 10),
+    axis.title = element_text(size = 12)
+  )
+model2b_beta <- model2b_effects |>
+  select(contains("beta"), contains("delta"), Origin, Predictor, .width, .point, .interval) |>
+  pivot_longer(cols = c(contains("beta"), contains("delta"))) |>
   mutate(
     level = "mid",
     level = ifelse(grepl("lower", name), "lower", level),
     level = ifelse(grepl("upper", name), "upper", level),
     name = gsub("\\.lower|\\.upper", "", name)
-  ) %>%
+  ) |>
+  filter(!Predictor %in% pred_order) |>
   pivot_wider(
-    id_cols = c(origin, Origin, Predictor, .width, .point, .interval, name),
+    id_cols = c(Origin, Predictor, .width, .point, .interval, name),
     names_from = level,
     values_from = value
-  ) %>%
+  ) |>
   ggplot(aes(y = Predictor, x = mid, xmin = lower, xmax = upper, col = name), position = position_dodge(0.4)) +
   geom_pointinterval(position = position_dodge(0.4)) +
   geom_vline(xintercept = 0, linetype = "dashed") +
   facet_wrap( ~ Origin, ncol = 3, scales = "free_x") +
-  scale_color_brewer(type = "qual", palette = "Set2", labels = c("A. donax absent", "A. donax present")) +
+  scale_color_brewer(type = "qual", name = "", palette = "Set2", labels = c("A. donax absent", "A. donax present")) +
   xlab("Parameter estimate") +
-  theme(legend.position = "bottom")
+  theme(
+    legend.position = "bottom",
+    panel.background = element_rect(fill = "white"),
+    axis.text = element_text(size = 10),
+    axis.title = element_text(size = 12)
+  )
 
 # save plots to file
 ggsave(
   model2b_beta,
-  filename = "outputs/figures/Fig5.png",
+  filename = "outputs/figures/FigS2.png",
   device = png,
   width = 8,
   height = 6,
@@ -828,9 +964,61 @@ ggsave(
   dpi = 600
 )
 
+# plot the predicted effects for a subset of species and predictors
+model2b_predicted <- model2b_effects |>
+  filter(.width == 0.66) |>
+  full_join(x_vals, by = c("predictor" = "term"), relationship = "many-to-many") |>
+  left_join(x_rescale, by = "predictor") |>
+  mutate(
+    x_raw = center + scale * x,
+    lower = exp(alpha + beta.lower * x + delta * arundo * x + theta * arundo),
+    upper = exp(alpha + beta.upper * x + delta * arundo * x + theta * arundo),
+    pred = exp(alpha + beta * x + delta * arundo * x + theta * arundo)
+  ) |>
+  filter(Predictor %in% pred_order) |>
+  mutate(
+    arundo = factor(arundo, levels = c(0, 1), labels = c("A. donax absent", "A. donax present")),
+    variant = factor(
+      paste(Predictor, Origin, sep = ": "),
+      levels = paste(
+        rep(pred_order, each = length(origin_list)), 
+        rep(origin_list, times = length(pred_order)),
+        sep = ": "
+      )
+    )
+  ) |>
+  ggplot(aes(y = pred, x = x_raw, ymin = lower, ymax = upper, col = arundo, fill = arundo)) +
+  geom_ribbon(alpha = 0.2, col = NA) +
+  geom_line() +
+  facet_wrap( ~ variant, scales = "free", ncol = 3) +
+  scale_colour_brewer(palette = "Set2", name = "") +
+  scale_fill_brewer(palette = "Set2", name = "") +
+  xlab("Predictor value") +
+  ylab("Predicted species richness") +
+  theme(
+    legend.position = "bottom",
+    panel.background = element_rect(fill = "white"),
+    axis.text = element_text(size = 10),
+    axis.title = element_text(size = 12),
+    strip.text = element_text(size = 7)
+  )
+
+# save to file
+ggsave(
+  model2b_predicted,
+  filename = "outputs/figures/Fig5.png",
+  device = png,
+  width = 7,
+  height = 9,
+  units = "in",
+  dpi = 600
+)
+
 # extract and plot parameters from model 3: SMI model
-model2c_effects <- draws_model2c %>% 
+model2c_effects <- draws_model2c |> 
   spread_draws(
+    alpha_main,
+    alpha[species],
     theta_main,
     theta[species],
     sigma_beta[predictor],
@@ -839,64 +1027,111 @@ model2c_effects <- draws_model2c %>%
     sigma_delta[predictor],
     zdelta_main[predictor],
     zdelta[species, predictor]
-  ) %>% 
+  ) |> 
   median_qi(
+    alpha = alpha_main + alpha,
     theta = theta_main + theta,
     beta = model2c_data$sigma_fixed * zbeta_main +
       model2c_data$sigma_random * sigma_beta * zbeta,
     delta = beta + model2c_data$sigma_fixed * zdelta_main +
       model2c_data$sigma_random * sigma_delta * zdelta,
     .width = c(0.95, 0.66)
-  ) %>%
+  ) |>
   mutate(
     Species = levels(factor(smi_full$SPECIES))[species],
+    Species = ifelse(
+      Species %in% names(species_replace),
+      species_replace[Species],
+      Species
+    ),
     predictor = colnames(model2c_data$X)[predictor],
     Predictor = predictor_names[predictor]
   )
-model2c_theta <- model2c_effects %>%
-  select(contains("theta"), theta.lower, theta.upper, Species, .width, .point, .interval) %>%
+model2c_theta <- model2c_effects |>
+  select(contains("theta"), theta.lower, theta.upper, Species, .width, .point, .interval) |>
   ggplot(aes(y = Species, x = theta, xmin = theta.lower, xmax = theta.upper)) +
   geom_pointinterval() +
   geom_vline(xintercept = 0, linetype = "dashed") +
-  xlab("Parameter estimate")
-model2c_beta <- model2c_effects %>%
-  select(contains("beta"), contains("delta"), Species, Predictor, .width, .point, .interval) %>%
-  pivot_longer(cols = c(contains("beta"), contains("delta"))) %>%
+  xlab("Parameter estimate") +
+  theme(
+    legend.position = "none",
+    panel.background = element_rect(fill = "white"),
+    axis.text = element_text(size = 10),
+    axis.title = element_text(size = 12)
+  )
+model2c_beta <- model2c_effects |>
+  select(contains("beta"), contains("delta"), Species, Predictor, .width, .point, .interval) |>
+  pivot_longer(cols = c(contains("beta"), contains("delta"))) |>
+  filter(!Predictor %in% pred_order) |>
   mutate(
     level = "mid",
     level = ifelse(grepl("lower", name), "lower", level),
     level = ifelse(grepl("upper", name), "upper", level),
     name = gsub("\\.lower|\\.upper", "", name)
-  ) %>%
+  ) |>
   pivot_wider(
-    id_cols = c(species, Species, Predictor, .width, .point, .interval, name),
+    id_cols = c(Species, Predictor, .width, .point, .interval, name),
     names_from = level,
     values_from = value
-  ) %>%
+  ) |>
   ggplot(aes(y = Species, x = mid, xmin = lower, xmax = upper, col = name), position = position_dodge(0.4)) +
   geom_pointinterval(position = position_dodge(0.4)) +
   geom_vline(xintercept = 0, linetype = "dashed") +
-  scale_color_brewer(type = "qual", palette = "Set2", labels = c("A. donax absent", "A. donax present")) +
+  scale_color_brewer(type = "qual", name = "", palette = "Set2", labels = c("A. donax absent", "A. donax present")) +
   facet_wrap( ~ Predictor, ncol = 3) +
-  xlab("Parameter estimate")
+  xlab("Parameter estimate") +
+  theme(
+    legend.position = "bottom",
+    panel.background = element_rect(fill = "white"),
+    axis.text = element_text(size = 10),
+    axis.title = element_text(size = 12)
+  )
 
-# combine theta plots into a single figure
-theta_plot <- (model2a_theta + ggtitle("Model 2a")) | 
-  ((model2b_theta + ggtitle("Model 2b")) / (model2c_theta + ggtitle("Model 2c")))
+# repeat for a subdset of predictors and for a subset of predictors and species
+model2c_beta_reduced <- model2c_effects |>
+  select(contains("beta"), contains("delta"), Species, Predictor, .width, .point, .interval) |>
+  pivot_longer(cols = c(contains("beta"), contains("delta"))) |>
+  mutate(
+    level = "mid",
+    level = ifelse(grepl("lower", name), "lower", level),
+    level = ifelse(grepl("upper", name), "upper", level),
+    name = gsub("\\.lower|\\.upper", "", name)
+  ) |>
+  filter(
+    Predictor %in% pred_order,
+    Species %in% species_subset
+  ) |>
+  mutate(Predictor = factor(Predictor, levels = pred_order)) |>
+  pivot_wider(
+    id_cols = c(Species, Predictor, .width, .point, .interval, name),
+    names_from = level,
+    values_from = value
+  ) |>
+  ggplot(aes(y = Species, x = mid, xmin = lower, xmax = upper, col = name), position = position_dodge(0.4)) +
+  geom_pointinterval(position = position_dodge(0.4)) +
+  geom_vline(xintercept = 0, linetype = "dashed") +
+  scale_color_brewer(type = "qual", name = "", palette = "Set2", labels = c("A. donax absent", "A. donax present")) +
+  facet_wrap( ~ Predictor, ncol = 3) +
+  xlab("Parameter estimate") +
+  theme(
+    legend.position = "bottom",
+    panel.background = element_rect(fill = "white"),
+    axis.text = element_text(size = 10),
+    axis.title = element_text(size = 12)
+  )
 
-# save plots to file
 ggsave(
-  theta_plot,
-  filename = "outputs/figures/Fig3.png",
+  model2c_beta,
+  filename = "outputs/figures/FigS4.png",
   device = png,
-  width = 5,
-  height = 6,
+  width = 8,
+  height = 8,
   units = "in", 
   dpi = 600
 )
 ggsave(
-  model2c_beta,
-  filename = "outputs/figures/Fig6.png",
+  model2c_beta_reduced,
+  filename = "outputs/figures/Fig7.png",
   device = png,
   width = 8,
   height = 8,
@@ -904,129 +1139,203 @@ ggsave(
   dpi = 600
 )
 
-# extract effects from model 2: how does A. donax affect species richness?
+# extract effects from model 3: how does A. donax affect FD indices?
 index_list <- c("FSpe", "FOri", "FEnt")
-model3a_effects <- draws_model3a %>% 
+model3a_effects <- draws_model3a |> 
   spread_draws(
+    alpha,
     theta,
     beta[predictor],
     delta[predictor]
-  ) %>% 
+  ) |> 
   median_qi(
-    theta, beta, delta = beta + delta,
+    alpha, theta, beta, delta = beta + delta,
     .width = c(0.95, 0.66)
-  ) %>%
+  ) |>
   mutate(
     predictor = rownames(model3_data$X)[predictor],
     Predictor = predictor_names[predictor]
   )
-model3b_effects <- draws_model3b %>% 
+model3b_effects <- draws_model3b |> 
   spread_draws(
+    alpha,
     theta,
     beta[predictor],
     delta[predictor]
-  ) %>% 
+  ) |> 
   median_qi(
-    theta, beta, delta = beta + delta,
+    alpha, theta, beta, delta = beta + delta,
     .width = c(0.95, 0.66)
-  ) %>%
+  ) |>
   mutate(
     predictor = rownames(model3_data$X)[predictor],
     Predictor = predictor_names[predictor]
   )
-model3c_effects <- draws_model3c %>% 
+model3c_effects <- draws_model3c |> 
   spread_draws(
+    alpha,
     theta,
     beta[predictor],
     delta[predictor]
-  ) %>% 
+  ) |> 
   median_qi(
-    theta, beta, delta = beta + delta,
+    alpha, theta, beta, delta = beta + delta,
     .width = c(0.95, 0.66)
-  ) %>%
+  ) |>
   mutate(
     predictor = rownames(model3_data$X)[predictor],
     Predictor = predictor_names[predictor]
   )
 model3_effects <- bind_rows(model3a_effects, model3b_effects, model3c_effects) |>
   mutate(Index = rep(index_list, times = c(nrow(model3a_effects), nrow(model3b_effects), nrow(model3c_effects))))
-model3_theta <- model3_effects %>%
-  select(contains("theta"), Index, .width, .point, .interval) %>%
+model3_theta <- model3_effects |>
+  select(contains("theta"), Index, .width, .point, .interval) |>
   ggplot(aes(y = Index, x = theta, xmin = theta.lower, xmax = theta.upper)) +
   geom_pointinterval() +
   geom_vline(xintercept = 0, linetype = "dashed") +
   scale_color_brewer(type = "qual", palette = "Set2") +
-  theme(legend.position = "none") +
+  theme(
+    legend.position = "none",
+    panel.background = element_rect(fill = "white"),
+    axis.text = element_text(size = 10),
+    axis.title = element_text(size = 12)
+  ) +
   xlab("Parameter estimate")
-model3_beta <- model3_effects %>%
-  select(contains("beta"), contains("delta"), Index, Predictor, .width, .point, .interval) %>%
-  pivot_longer(cols = c(contains("beta"), contains("delta"))) %>%
+model3_beta <- model3_effects |>
+  select(contains("beta"), contains("delta"), Index, Predictor, .width, .point, .interval) |>
+  pivot_longer(cols = c(contains("beta"), contains("delta"))) |>
   mutate(
     level = "mid",
     level = ifelse(grepl("lower", name), "lower", level),
     level = ifelse(grepl("upper", name), "upper", level),
     name = gsub("\\.lower|\\.upper", "", name)
-  ) %>%
+  ) |>
+  filter(!Predictor %in% pred_order) |>
   pivot_wider(
     id_cols = c(Index, Predictor, .width, .point, .interval, name),
     names_from = level,
     values_from = value
-  ) %>%
+  ) |>
   ggplot(aes(y = Predictor, x = mid, xmin = lower, xmax = upper, col = name), position = position_dodge(0.4)) +
   geom_pointinterval(position = position_dodge(0.4)) +
   geom_vline(xintercept = 0, linetype = "dashed") +
   facet_wrap( ~ Index, ncol = 3, scales = "free_x") +
-  scale_color_brewer(type = "qual", palette = "Set2", labels = c("A. donax absent", "A. donax present")) +
+  scale_color_brewer(type = "qual", name = "", palette = "Set2", labels = c("A. donax absent", "A. donax present")) +
   xlab("Parameter estimate") +
-  theme(legend.position = "bottom")
+  theme(
+    legend.position = "bottom",
+    panel.background = element_rect(fill = "white"),
+    axis.text = element_text(size = 10),
+    axis.title = element_text(size = 12)
+  )
 
 # save plots to file
 ggsave(
   model3_beta,
-  filename = "outputs/figures/Fig-fd-beta.png",
+  filename = "outputs/figures/FigS1.png",
   device = png,
   width = 8,
   height = 6,
   units = "in", 
   dpi = 600
 )
+
+# plot the predicted effects for a subset of species and predictors
+model3_predicted <- model3_effects |>
+  filter(.width == 0.66) |>
+  full_join(x_vals, by = c("predictor" = "term"), relationship = "many-to-many") |>
+  left_join(x_rescale, by = "predictor") |>
+  mutate(
+    x_raw = center + scale * x,
+    lower = exp(alpha + beta.lower * x + delta * arundo * x + theta * arundo),
+    upper = exp(alpha + beta.upper * x + delta * arundo * x + theta * arundo),
+    pred = exp(alpha + beta * x + delta * arundo * x + theta * arundo)
+  ) |>
+  filter(
+    Predictor %in% pred_order
+  ) |>
+  mutate(
+    arundo = factor(arundo, levels = c(0, 1), labels = c("A. donax absent", "A. donax present")),
+    variant = factor(
+      paste(Predictor, Index, sep = ": "),
+      levels = paste(
+        rep(pred_order, each = length(index_list)),
+        rep(rev(index_list), times = length(pred_order)),
+        sep = ": "
+      )
+    )
+  ) |>
+  ggplot(aes(y = pred, x = x_raw, ymin = lower, ymax = upper, col = arundo, fill = arundo)) +
+  geom_ribbon(alpha = 0.2, col = NA) +
+  geom_line() +
+  facet_wrap( ~ variant, scales = "free", ncol = 3) +
+  scale_colour_brewer(palette = "Set2", name = "") +
+  scale_fill_brewer(palette = "Set2", name = "") +
+  xlab("Predictor value") +
+  ylab("Predicted functional diversity index") +
+  theme(
+    legend.position = "bottom",
+    panel.background = element_rect(fill = "white"),
+    axis.text = element_text(size = 10),
+    axis.title = element_text(size = 12),
+    strip.text = element_text(size = 7)
+  )
+
+# save to file
 ggsave(
-  model3_theta,
-  filename = "outputs/figures/Fig-fd-theta.png",
+  model3_predicted,
+  filename = "outputs/figures/Fig4.png",
   device = png,
-  width = 8,
-  height = 6,
+  width = 7,
+  height = 9,
+  units = "in",
+  dpi = 600
+)
+
+# create a plot with everythign together
+theta_plot <- (model3_theta + ggtitle("Model 2") | (model2b_theta + ggtitle("Model 3")))  /
+  ((model2a_theta + ggtitle("Model 4")) |
+     (model2c_theta + ggtitle("Model 5"))) +
+  plot_layout(heights = c(0.15, 0.85))
+
+# save plots to file
+ggsave(
+  theta_plot,
+  filename = "outputs/figures/Fig3.png",
+  device = png,
+  width = 5,
+  height = 8,
   units = "in", 
   dpi = 600
 )
 
 # extract fitted values
-model1_fitted <- draws_model1 %>% 
-  gather_draws(mu[obs]) %>% 
-  median_qi() %>%
+model1_fitted <- draws_model1 |> 
+  gather_draws(mu[obs]) |> 
+  median_qi() |>
   mutate(
     fitted = plogis(.value),
     lower = plogis(.lower),
     upper = plogis(.upper),
     observed = model1_data$y
   )
-model2a_fitted <- draws_model2a %>%
-  gather_draws(mu[species, obs]) %>%
+model2a_fitted <- draws_model2a |>
+  gather_draws(mu[species, obs]) |>
   median_qi()
-model2b_fitted <- draws_model2b %>%
-  gather_draws(mu[origin, obs]) %>%
+model2b_fitted <- draws_model2b |>
+  gather_draws(mu[origin, obs]) |>
   median_qi()
-model2c_fitted <- draws_model2c %>%
-  gather_draws(mu[obs]) %>%
+model2c_fitted <- draws_model2c |>
+  gather_draws(mu[obs]) |>
   median_qi()
-model3a_fitted <- draws_model3a %>%
-  gather_draws(mu[obs]) %>%
+model3a_fitted <- draws_model3a |>
+  gather_draws(mu[obs]) |>
   median_qi()
-model3b_fitted <- draws_model3b %>%
-  gather_draws(mu[obs]) %>%
+model3b_fitted <- draws_model3b |>
+  gather_draws(mu[obs]) |>
   median_qi()
-model3c_fitted <- draws_model3c %>%
-  gather_draws(mu[obs]) %>%
+model3c_fitted <- draws_model3c |>
+  gather_draws(mu[obs]) |>
   median_qi()
 
 # calculate fit stats for model 0a and 0b
@@ -1087,27 +1396,31 @@ fitted_values <- data.frame(
 )
 
 # plot fitted values or TPR/FPR plots
-fitted_plot <- fitted_values %>%
+fitted_plot <- fitted_values |>
   mutate(
     model = gsub("draws_", "", model),
     model = gsub("model", "Model ", model),
     upper = ifelse(upper > 10 * fitted, 10 * fitted, upper)
-  ) %>%
+  ) |>
   ggplot() +
   geom_point(aes(y = fitted, x = observed)) +
   geom_errorbar(aes(ymin = lower, ymax = upper, x = observed)) +
   facet_wrap( ~ model, scales = "free") +
   xlab("False positive rate (Model 1) or observed value (Models 2 and 3)") +
   ylab("True positive rate (Model 1) or fitted value (Models 2 and 3)") +
-  theme(axis.title = element_text(size = 8))
+  theme(
+    panel.background = element_rect(fill = "white"),
+    axis.text = element_text(size = 10),
+    axis.title = element_text(size = 12)
+  )
 
 # save to file
 ggsave(
   fitted_plot,
-  filename = "outputs/figures/FigS2.png",
+  filename = "outputs/figures/Fig-fitted.png",
   device = png,
-  width = 6,
-  height = 4,
+  width = 8,
+  height = 6,
   units = "in", 
   dpi = 600
 )
@@ -1127,30 +1440,65 @@ fit_stats <- data.frame(
   statistic = c("AUC", rep("r", 6)),
   values = fit_stats
 )
-fit_stats <- fit_stats %>%
+fit_stats <- fit_stats |>
   mutate(model = gsub("draws_m", "M", model))
 write.csv(fit_stats, file = "outputs/tables/Table2.csv")
 
 # calculate posterior predictive distributions and plot against observed data
 model1_pp <- pp_check(draws_model1, model1_data$y, breaks = seq(-0.5, 1.5, by = 1), xlim = c(-0.5, 1.5)) + 
-  ggtitle("Model 1")
+  ggtitle("Model 1") + 
+  theme(
+    panel.background = element_rect(fill = "white"),
+    axis.text = element_text(size = 10),
+    axis.title = element_text(size = 12)
+  )
 model2a_pp <- pp_check(draws_model2a, model2a_data$yflat, breaks = seq(-0.5, 101, by = 1), xlim = c(-0.5, 100)) + 
-  ggtitle("Model 2a")
+  ggtitle("Model 2a") + 
+  theme(
+    panel.background = element_rect(fill = "white"),
+    axis.text = element_text(size = 10),
+    axis.title = element_text(size = 12)
+  )
 model2b_pp <- pp_check(draws_model2b, model2b_data$yflat, breaks = seq(-0.5, 225, by = 1), xlim = c(-0.5, 220)) + 
-  ggtitle("Model 2b")
+  ggtitle("Model 2b") + 
+  theme(
+    panel.background = element_rect(fill = "white"),
+    axis.text = element_text(size = 10),
+    axis.title = element_text(size = 12)
+  )
 model2c_pp <- pp_check(draws_model2c, model2c_data$y, breaks = seq(-0.5, 285, by = 1), xlim = c(-0.5, 280)) + 
-  ggtitle("Model 2c")
+  ggtitle("Model 2c") + 
+  theme(
+    panel.background = element_rect(fill = "white"),
+    axis.text = element_text(size = 10),
+    axis.title = element_text(size = 12)
+  )
 model3a_pp <- pp_check(draws_model3a, model3a_data$y, breaks = seq(0, 1, by = 0.01), xlim = c(0, 1)) + 
-  ggtitle("Model 3a")
+  ggtitle("Model 3a") + 
+  theme(
+    panel.background = element_rect(fill = "white"),
+    axis.text = element_text(size = 10),
+    axis.title = element_text(size = 12)
+  )
 model3b_pp <- pp_check(draws_model3b, model3b_data$y, breaks = seq(0, 1, by = 0.01), xlim = c(0, 1)) + 
-  ggtitle("Model 3b")
+  ggtitle("Model 3b") + 
+  theme(
+    panel.background = element_rect(fill = "white"),
+    axis.text = element_text(size = 10),
+    axis.title = element_text(size = 12)
+  )
 model3c_pp <- pp_check(draws_model3c, model3c_data$y, breaks = seq(0, 2, by = 0.02), xlim = c(0, 2)) + 
-  ggtitle("Model 3c")
+  ggtitle("Model 3c") + 
+  theme(
+    panel.background = element_rect(fill = "white"),
+    axis.text = element_text(size = 10),
+    axis.title = element_text(size = 12)
+  )
 
 # save pp check plot to file
 ggsave(
   (model1_pp / model2b_pp / model3a_pp / model3c_pp) | (model2a_pp / model2c_pp / model3b_pp / plot_spacer()),
-  filename = "outputs/figures/FigS3.png",
+  filename = "outputs/figures/Fig-ppchecks.png",
   device = png,
   width = 7,
   height = 8,
@@ -1160,129 +1508,129 @@ ggsave(
 
 # work out posterior odds for covariates in each model
 # Model 1
-ppm_model1 <- draws_model1 %>%
-  spread_draws(beta[Predictor]) %>%
+ppm_model1 <- draws_model1 |>
+  spread_draws(beta[Predictor]) |>
   mutate(
     Predictor = colnames(model1_data$X)[Predictor],
     Predictor = predictor_names[Predictor],
     beta_gtzero = ifelse(beta > 0, 1, 0)
-  ) %>%
-  group_by(Predictor) %>%
-  summarise(beta_pp = mean(beta_gtzero)) %>%
+  ) |>
+  group_by(Predictor) |>
+  summarise(beta_pp = mean(beta_gtzero)) |>
   mutate(
     posterior_odds_beta = beta_pp / (1 - beta_pp),
     Model = "Model 1"
-  ) %>%
+  ) |>
   select(Model, Predictor, beta_pp, posterior_odds_beta)
 
 # Model 2a
-ppm_model2a_theta <- draws_model2a %>%
-  spread_draws(theta[species]) %>%
+ppm_model2a_theta <- draws_model2a |>
+  spread_draws(theta[species]) |>
   mutate(
     Species = colnames(paired_cpue)[species],
     theta_gtzero = ifelse(theta > 0, 1, 0)
-  ) %>%
-  group_by(Species) %>%
-  summarise(ad_effect_pp = mean(theta_gtzero)) %>%
+  ) |>
+  group_by(Species) |>
+  summarise(ad_effect_pp = mean(theta_gtzero)) |>
   mutate(
     posterior_odds_ad_effect = ad_effect_pp / (1 - ad_effect_pp),
     Model = "Model 2a"
-  ) %>%
+  ) |>
   select(Model, Species, ad_effect_pp, posterior_odds_ad_effect)
-ppm_model2a <- draws_model2a %>% 
+ppm_model2a <- draws_model2a |> 
   spread_draws(
     beta[species, predictor],
     delta[species, predictor]
-  ) %>%
+  ) |>
   mutate(
     Species = colnames(paired_cpue)[species],
     predictor = rownames(model2a_data$X)[predictor],
     Predictor = predictor_names[predictor]
-  ) %>%
+  ) |>
   mutate(
     delta = beta + delta,
     beta_gtzero = ifelse(beta > 0, 1, 0),
     delta_gtzero = ifelse(delta > 0, 1, 0)
-  ) %>%
-  group_by(Species, Predictor) %>%
+  ) |>
+  group_by(Species, Predictor) |>
   summarise(
     beta_ad_absent_pp = mean(beta_gtzero),
     beta_ad_present_pp = mean(delta_gtzero)
-  ) %>%
+  ) |>
   mutate(
     posterior_odds_ad_absent = beta_ad_absent_pp / (1 - beta_ad_absent_pp),
     posterior_odds_ad_present = beta_ad_present_pp / (1 - beta_ad_present_pp),
     Model = "Model 2a"
-  ) %>%
+  ) |>
   select(
     Model, Predictor, Species,
     beta_ad_absent_pp, posterior_odds_ad_absent,
     beta_ad_present_pp, posterior_odds_ad_present
-  ) %>%
+  ) |>
   arrange(Model, Predictor, Species)
 
 # Model 2b
-ppm_model2b_theta <- draws_model2b %>%
-  spread_draws(theta[origin]) %>%
+ppm_model2b_theta <- draws_model2b |>
+  spread_draws(theta[origin]) |>
   mutate(
     Species = origin_list[origin],
     theta_gtzero = ifelse(theta > 0, 1, 0)
-  ) %>%
-  group_by(Species) %>%
-  summarise(ad_effect_pp = mean(theta_gtzero)) %>%
+  ) |>
+  group_by(Species) |>
+  summarise(ad_effect_pp = mean(theta_gtzero)) |>
   mutate(
     posterior_odds_ad_effect = ad_effect_pp / (1 - ad_effect_pp),
     Model = "Model 2b"
-  ) %>%
+  ) |>
   select(Model, Species, ad_effect_pp, posterior_odds_ad_effect)
-ppm_model2b <- draws_model2b %>% 
+ppm_model2b <- draws_model2b |> 
   spread_draws(
     beta[origin, predictor],
     delta[origin, predictor]
-  ) %>%
+  ) |>
   mutate(
     Species = origin_list[origin],
     predictor = rownames(model2a_data$X)[predictor],
     Predictor = predictor_names[predictor]
-  ) %>%
+  ) |>
   mutate(
     delta = beta + delta,
     beta_gtzero = ifelse(beta > 0, 1, 0),
     delta_gtzero = ifelse(delta > 0, 1, 0)
-  ) %>%
-  group_by(Species, Predictor) %>%
+  ) |>
+  group_by(Species, Predictor) |>
   summarise(
     beta_ad_absent_pp = mean(beta_gtzero),
     beta_ad_present_pp = mean(delta_gtzero)
-  ) %>%
+  ) |>
   mutate(
     posterior_odds_ad_absent = beta_ad_absent_pp / (1 - beta_ad_absent_pp),
     posterior_odds_ad_present = beta_ad_present_pp / (1 - beta_ad_present_pp),
     Model = "Model 2b"
-  ) %>%
+  ) |>
   select(
     Model, Predictor, Species,
     beta_ad_absent_pp, posterior_odds_ad_absent,
     beta_ad_present_pp, posterior_odds_ad_present
-  ) %>%
+  ) |>
   arrange(Model, Predictor, Species)
 
 # Model 2c
-ppm_model2c_theta <- draws_model2c %>%
-  spread_draws(theta_main, theta[species]) %>% 
+ppm_model2c_theta <- draws_model2c |>
+  spread_draws(theta_main, theta[species]) |> 
   mutate(
     Species = levels(factor(smi_full$SPECIES))[species],
     theta = theta_main + theta,
     theta_gtzero = ifelse(theta > 0, 1, 0)
-  ) %>%
-  group_by(Species) %>%
-  summarise(ad_effect_pp = mean(theta_gtzero)) %>%
+  ) |>
+  group_by(Species) |>
+  summarise(ad_effect_pp = mean(theta_gtzero)) |>
   mutate(
     posterior_odds_ad_effect = ad_effect_pp / (1 - ad_effect_pp),
     Model = "Model 2c"
-  ) %>%
+  ) |>
   select(Model, Species, ad_effect_pp, posterior_odds_ad_effect)
-ppm_model2c <- draws_model2c %>% 
+ppm_model2c <- draws_model2c |> 
   spread_draws(
     sigma_beta[predictor],
     zbeta_main[predictor],
@@ -1290,7 +1638,7 @@ ppm_model2c <- draws_model2c %>%
     sigma_delta[predictor],
     zdelta_main[predictor],
     zdelta[species, predictor]
-  ) %>% 
+  ) |> 
   mutate(
     Species = levels(factor(smi_full$SPECIES))[species],
     predictor = colnames(model2c_data$X)[predictor],
@@ -1301,151 +1649,151 @@ ppm_model2c <- draws_model2c %>%
       model2c_data$sigma_random * sigma_delta * zdelta,
     beta_gtzero = ifelse(beta > 0, 1, 0),
     delta_gtzero = ifelse(delta > 0, 1, 0)
-  ) %>%
-  group_by(Species, Predictor) %>%
+  ) |>
+  group_by(Species, Predictor) |>
   summarise(
     beta_ad_absent_pp = mean(beta_gtzero),
     beta_ad_present_pp = mean(delta_gtzero)
-  ) %>%
+  ) |>
   mutate(
     posterior_odds_ad_absent = beta_ad_absent_pp / (1 - beta_ad_absent_pp),
     posterior_odds_ad_present = beta_ad_present_pp / (1 - beta_ad_present_pp),
     Model = "Model 2c"
-  ) %>%
+  ) |>
   select(
     Model, Predictor, Species,
     beta_ad_absent_pp, posterior_odds_ad_absent,
     beta_ad_present_pp, posterior_odds_ad_present
-  ) %>%
+  ) |>
   arrange(Model, Predictor, Species)
 
 # Model 3a
-ppm_model3a_theta <- draws_model3a %>%
-  spread_draws(theta) %>%
+ppm_model3a_theta <- draws_model3a |>
+  spread_draws(theta) |>
   mutate(
     theta_gtzero = ifelse(theta > 0, 1, 0)
-  ) %>%
-  summarise(ad_effect_pp = mean(theta_gtzero)) %>%
+  ) |>
+  summarise(ad_effect_pp = mean(theta_gtzero)) |>
   mutate(
     posterior_odds_ad_effect = ad_effect_pp / (1 - ad_effect_pp),
     Model = "Model 3a"
-  ) %>%
+  ) |>
   select(Model, ad_effect_pp, posterior_odds_ad_effect)
-ppm_model3a <- draws_model3a %>% 
+ppm_model3a <- draws_model3a |> 
   spread_draws(
     beta[predictor],
     delta[predictor]
-  ) %>%
+  ) |>
   mutate(
     predictor = rownames(model2a_data$X)[predictor],
     Predictor = predictor_names[predictor]
-  ) %>%
+  ) |>
   mutate(
     delta = beta + delta,
     beta_gtzero = ifelse(beta > 0, 1, 0),
     delta_gtzero = ifelse(delta > 0, 1, 0)
-  ) %>%
-  group_by(Predictor) %>%
+  ) |>
+  group_by(Predictor) |>
   summarise(
     beta_ad_absent_pp = mean(beta_gtzero),
     beta_ad_present_pp = mean(delta_gtzero)
-  ) %>%
+  ) |>
   mutate(
     posterior_odds_ad_absent = beta_ad_absent_pp / (1 - beta_ad_absent_pp),
     posterior_odds_ad_present = beta_ad_present_pp / (1 - beta_ad_present_pp),
     Model = "Model 3a"
-  ) %>%
+  ) |>
   select(
     Model, Predictor,
     beta_ad_absent_pp, posterior_odds_ad_absent,
     beta_ad_present_pp, posterior_odds_ad_present
-  ) %>%
+  ) |>
   arrange(Model, Predictor)
 
 # Model 3b
-ppm_model3b_theta <- draws_model3b %>%
-  spread_draws(theta) %>%
+ppm_model3b_theta <- draws_model3b |>
+  spread_draws(theta) |>
   mutate(
     theta_gtzero = ifelse(theta > 0, 1, 0)
-  ) %>%
-  summarise(ad_effect_pp = mean(theta_gtzero)) %>%
+  ) |>
+  summarise(ad_effect_pp = mean(theta_gtzero)) |>
   mutate(
     posterior_odds_ad_effect = ad_effect_pp / (1 - ad_effect_pp),
     Model = "Model 3b"
-  ) %>%
+  ) |>
   select(Model, ad_effect_pp, posterior_odds_ad_effect)
-ppm_model3b <- draws_model3b %>% 
+ppm_model3b <- draws_model3b |> 
   spread_draws(
     beta[predictor],
     delta[predictor]
-  ) %>%
+  ) |>
   mutate(
     predictor = rownames(model2a_data$X)[predictor],
     Predictor = predictor_names[predictor]
-  ) %>%
+  ) |>
   mutate(
     delta = beta + delta,
     beta_gtzero = ifelse(beta > 0, 1, 0),
     delta_gtzero = ifelse(delta > 0, 1, 0)
-  ) %>%
-  group_by(Predictor) %>%
+  ) |>
+  group_by(Predictor) |>
   summarise(
     beta_ad_absent_pp = mean(beta_gtzero),
     beta_ad_present_pp = mean(delta_gtzero)
-  ) %>%
+  ) |>
   mutate(
     posterior_odds_ad_absent = beta_ad_absent_pp / (1 - beta_ad_absent_pp),
     posterior_odds_ad_present = beta_ad_present_pp / (1 - beta_ad_present_pp),
     Model = "Model 3b"
-  ) %>%
+  ) |>
   select(
     Model, Predictor,
     beta_ad_absent_pp, posterior_odds_ad_absent,
     beta_ad_present_pp, posterior_odds_ad_present
-  ) %>%
+  ) |>
   arrange(Model, Predictor)
 
 # Model 3c
-ppm_model3c_theta <- draws_model3c %>%
-  spread_draws(theta) %>%
+ppm_model3c_theta <- draws_model3c |>
+  spread_draws(theta) |>
   mutate(
     theta_gtzero = ifelse(theta > 0, 1, 0)
-  ) %>%
-  summarise(ad_effect_pp = mean(theta_gtzero)) %>%
+  ) |>
+  summarise(ad_effect_pp = mean(theta_gtzero)) |>
   mutate(
     posterior_odds_ad_effect = ad_effect_pp / (1 - ad_effect_pp),
     Model = "Model 3c"
-  ) %>%
+  ) |>
   select(Model, ad_effect_pp, posterior_odds_ad_effect)
-ppm_model3c <- draws_model3c %>% 
+ppm_model3c <- draws_model3c |> 
   spread_draws(
     beta[predictor],
     delta[predictor]
-  ) %>%
+  ) |>
   mutate(
     predictor = rownames(model2a_data$X)[predictor],
     Predictor = predictor_names[predictor]
-  ) %>%
+  ) |>
   mutate(
     delta = beta + delta,
     beta_gtzero = ifelse(beta > 0, 1, 0),
     delta_gtzero = ifelse(delta > 0, 1, 0)
-  ) %>%
-  group_by(Predictor) %>%
+  ) |>
+  group_by(Predictor) |>
   summarise(
     beta_ad_absent_pp = mean(beta_gtzero),
     beta_ad_present_pp = mean(delta_gtzero)
-  ) %>%
+  ) |>
   mutate(
     posterior_odds_ad_absent = beta_ad_absent_pp / (1 - beta_ad_absent_pp),
     posterior_odds_ad_present = beta_ad_present_pp / (1 - beta_ad_present_pp),
     Model = "Model 3c"
-  ) %>%
+  ) |>
   select(
     Model, Predictor,
     beta_ad_absent_pp, posterior_odds_ad_absent,
     beta_ad_present_pp, posterior_odds_ad_present
-  ) %>%
+  ) |>
   arrange(Model, Predictor)
 
 # combine these and write to table
